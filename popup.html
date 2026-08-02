@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>UMCP Library Checker</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 12px;
+        width: 300px;
+        color: #222;
+      }
+
+      h1 {
+        font-size: 16px;
+        margin: 0 0 8px 0;
+      }
+
+      .box {
+        background: #f7f9fc;
+        border: 1px solid #d7dee8;
+        border-radius: 8px;
+        padding: 10px;
+      }
+
+      .small {
+        font-size: 12px;
+        color: #555;
+      }
+
+      .status {
+        margin-top: 8px;
+        font-weight: 600;
+      }
+
+      code {
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>UMCP Library Checker</h1>
+    <div class="box">
+      <div id="pageStatus">Checking page…</div>
+      <div class="status" id="activationStatus"></div>
+      <p class="small">
+        This extension adds library catalog search links to UMCP bookstore course
+        materials pages.
+      </p>
+      <p class="small">
+        Supported page:
+        <br />
+        <code>/course-material-listing-page</code>
+      </p>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

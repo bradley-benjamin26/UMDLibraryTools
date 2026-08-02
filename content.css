@@ -1,0 +1,340 @@
+/* =========================
+   Screen-reader only
+   ========================= */
+
+.umcp-library-sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+/* =========================
+   Shared link/button styles
+   ========================= */
+
+.umcp-library-link,
+.umcp-library-summary-link {
+  display: inline-block;
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: #e21833;
+  color: #ffffff !important;
+  text-decoration: none !important;
+  font-size: 12px;
+  line-height: 1.2;
+  border: 1px solid #b51228;
+}
+
+.umcp-library-link:hover,
+.umcp-library-summary-link:hover {
+  background: #b51228;
+  color: #ffffff !important;
+  text-decoration: none !important;
+}
+
+.umcp-library-toolbar-button,
+.umcp-library-summary-close {
+  border: 1px solid #b51228;
+  border-radius: 6px;
+  color: #ffffff;
+  font-family: Arial, sans-serif;
+  cursor: pointer;
+}
+
+/* Focus visibility */
+.umcp-library-link:focus,
+.umcp-library-summary-link:focus,
+.umcp-library-toolbar-button:focus,
+.umcp-library-summary-close:focus,
+.umcp-library-availability-link:focus {
+  outline: 3px solid #000000;
+  outline-offset: 2px;
+}
+
+/* Slightly reduce default heading margins inside injected UI */
+.umcp-library-toolbar-title,
+.umcp-library-summary-title,
+.umcp-library-tools-title,
+.umcp-library-summary-item-title {
+  margin: 0;
+}
+
+/* =========================
+   Per-book library panel
+   ========================= */
+
+.umcp-library-tools {
+  margin-top: 12px;
+  padding: 12px;
+  border: 2px solid #e21833;
+  border-radius: 8px;
+  background: #ffffff;
+  font-family: Arial, sans-serif;
+}
+
+.umcp-library-tools-title {
+  margin-bottom: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #e21833;
+  line-height: 1.35;
+}
+
+.umcp-library-meta-list {
+  margin: 0 0 10px 0;
+  padding: 0;
+}
+
+.umcp-library-meta-line {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 10px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #000000;
+}
+
+.umcp-library-meta-line dt,
+.umcp-library-meta-line dd {
+  margin: 0;
+}
+
+.umcp-library-meta-line dt {
+  font-weight: 700;
+}
+
+.umcp-library-meta-line dd {
+  word-break: break-word;
+}
+
+.umcp-library-availability-value dd {
+  font-weight: 700;
+}
+
+.umcp-library-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* =========================
+   Top toolbar
+   ========================= */
+
+.umcp-library-toolbar {
+  margin: 12px 0 16px;
+  padding: 12px;
+  border: 2px solid #e21833;
+  border-radius: 8px;
+  background: #ffffff;
+  font-family: Arial, sans-serif;
+}
+
+.umcp-library-toolbar-title {
+  margin-bottom: 8px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #e21833;
+  line-height: 1.35;
+}
+
+.umcp-library-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.umcp-library-toolbar-button {
+  background: #e21833;
+  color: #ffffff;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.umcp-library-toolbar-button:hover {
+  background: #b51228;
+}
+
+.umcp-library-toolbar-button-secondary {
+  background: #000000;
+  border-color: #000000;
+  color: #ffffff;
+}
+
+.umcp-library-toolbar-button-secondary:hover {
+  background: #333333;
+}
+
+/* =========================
+   Summary panel
+   ========================= */
+
+.umcp-library-summary-panel {
+  margin: 0 0 18px;
+  padding: 12px;
+  border: 2px solid #e21833;
+  border-radius: 8px;
+  background: #ffffff;
+  font-family: Arial, sans-serif;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.umcp-library-summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.umcp-library-summary-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #e21833;
+  line-height: 1.35;
+}
+
+.umcp-library-summary-close {
+  background: #000000;
+  border-color: #000000;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.umcp-library-summary-close:hover {
+  background: #333333;
+}
+
+.umcp-library-summary-empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #000000;
+}
+
+.umcp-library-summary-list {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.umcp-library-summary-item {
+  padding: 10px;
+  border: 1px solid #e21833;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.umcp-library-summary-item-title {
+  margin-bottom: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #e21833;
+}
+
+.umcp-library-summary-item-meta {
+  margin-bottom: 8px;
+}
+
+.umcp-library-summary-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* =========================
+   Busy/loading state
+   ========================= */
+
+.umcp-library-tools[aria-busy="true"],
+.umcp-library-summary-item[aria-busy="true"] {
+  opacity: 0.96;
+}
+
+/* =========================
+   Responsive behavior
+   ========================= */
+
+@media (max-width: 640px) {
+  .umcp-library-links,
+  .umcp-library-summary-links,
+  .umcp-library-toolbar-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .umcp-library-link,
+  .umcp-library-summary-link,
+  .umcp-library-toolbar-button,
+  .umcp-library-summary-close {
+    text-align: center;
+  }
+
+  .umcp-library-summary-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .umcp-library-meta-line {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
+.umcp-library-search-label {
+  margin: 12px 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #e21833;
+}
+
+.umcp-library-availability-block {
+  margin: 12px 0;
+  padding: 10px;
+  border: 2px solid #e21833;
+  border-radius: 8px;
+  background: #ffd200;
+}
+
+.umcp-library-availability-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: #000000;
+}
+
+.umcp-library-availability-text {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: #000000;
+}
+
+.umcp-library-availability-link {
+  display: inline-block;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #e21833;
+  border: 2px solid #b51228;
+  color: #ffffff !important;
+  text-decoration: none !important;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.umcp-library-availability-link:hover {
+  background: #b51228;
+  color: #ffffff !important;
+  text-decoration: none !important;
+}
