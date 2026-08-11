@@ -1,5 +1,10 @@
 (() => {
   "use strict";
+const SearchIntelligence = globalThis.UMCPSearchIntelligence;
+  if (!SearchIntelligence) {
+    console.error("[UMCP Google Catalog] searchIntelligence.js must be loaded before googleSearch.js.");
+    return;
+  }
 
   // Google Search / Google Scholar catalog integration.
   //
@@ -100,13 +105,6 @@
     resultsLoaded: (count) => `Loaded ${count} catalog result${count === 1 ? "" : "s"}.`
   };
 
-  // Common words that usually add noise when a Google query is turned into a
-  // library search.
-  const STOP_WORDS = new Set([
-    "a", "an", "and", "are", "at", "be", "best", "book", "books", "for", "from", "how", "i",
-    "in", "is", "me", "my", "near", "of", "on", "or", "pdf", "the", "to", "what", "where",
-    "with", "youtube", "reddit", "amazon", "free", "download", "online", "review", "reviews"
-  ]);
 
   // Cache both completed and in-flight lookups so repeated renders for the same
   // query do not trigger duplicate SRU traffic.
@@ -146,9 +144,6 @@
   }
 
   // Escape values interpolated into SRU CQL queries.
-  function escapeCqlTerm(value) {
-    return normalizeText(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  }
 
   // Detect standard Google search results pages.
   function isGoogleSearchPage() {
@@ -183,7 +178,7 @@
           query
         };
       }
-    } catch {
+    } catch (error) {
       // Fall through to an empty context.
     }
 
@@ -192,88 +187,6 @@
       pageLabel: "",
       query: ""
     };
-  }
-
-  // Strip obvious search-operator noise so the same Google query becomes a
-  // cleaner library query.
-  function sanitizeQuery(rawQuery) {
-    const withoutOperators = normalizeText(rawQuery)
-      .replace(/\b(site|filetype|intitle|inurl|cache|related):\S+/gi, " ")
-      .replace(/[“”]/g, '"')
-      .replace(/[‘’]/g, "'")
-      .replace(/[?!]+/g, " ")
-      .replace(/\s*[-–—]\s*(pdf|epub|kindle|summary|analysis|sparknotes)\b/gi, " ")
-      .replace(/\b(edition|ed\.?|hardcover|paperback)\b/gi, " ");
-
-    const maxWords = isGoogleScholarPage()
-      ? CONFIG.heuristics.maxScholarWords
-      : CONFIG.heuristics.maxQueryWords;
-
-    const cleaned = normalizeText(withoutOperators);
-    const words = cleaned.split(" ").filter(Boolean).slice(0, maxWords);
-    return normalizeText(words.join(" "));
-  }
-
-  // Break a query into normalized tokens for heuristic checks.
-  function tokenizeQuery(query) {
-    return sanitizeQuery(query)
-      .split(" ")
-      .map((token) => token.replace(/[^\p{L}\p{N}'-]/gu, "").toLowerCase())
-      .filter(Boolean);
-  }
-
-  // Keep only tokens that are useful for broad matching.
-  function getUsefulTokens(query) {
-    return tokenizeQuery(query).filter((token) => token.length > 2 && !STOP_WORDS.has(token));
-  }
-
-  // Decide whether the current Google query is likely to be useful as a catalog
-  // search. This avoids noisy results on clearly non-library web searches.
-  function shouldSearchCatalog(query, context = {}) {
-    const cleaned = sanitizeQuery(query);
-    if (!cleaned) {
-      return false;
-    }
-
-    const obviousNonCatalogPatterns = [
-      /\b(weather|map|maps|news|youtube|reddit|instagram|tiktok|facebook|twitter|x\.com)\b/i,
-      /\bnear me\b/i,
-      /\bzip code\b/i,
-      /\blive score\b/i,
-      /\bflight status\b/i,
-      /\brestaurant\b/i,
-      /\bopen now\b/i,
-      /\bjobs?\b/i,
-      /\brecipe\b/i,
-      /\bmenu\b/i,
-      /\bmovie times?\b/i
-    ];
-
-    if (obviousNonCatalogPatterns.some((pattern) => pattern.test(cleaned))) {
-      return false;
-    }
-
-    const tokens = tokenizeQuery(cleaned);
-    const maxTokens = context.sourceType === "scholar"
-      ? CONFIG.heuristics.maxScholarWords
-      : CONFIG.heuristics.maxQueryWords;
-
-    if (tokens.length === 0 || tokens.length > maxTokens) {
-      return false;
-    }
-
-    // Scholar searches are much more likely to be article- or citation-oriented,
-    // so we allow them through with lighter filtering.
-    if (context.sourceType === "scholar") {
-      return true;
-    }
-
-    const usefulTokens = getUsefulTokens(cleaned);
-    if (usefulTokens.length >= CONFIG.heuristics.minUsefulWords) {
-      return true;
-    }
-
-    return /^".+"$/.test(cleaned) || cleaned.split(" ").length <= 3;
   }
 
   // Apply the fixed Primo parameters used by every catalog link.
@@ -297,10 +210,10 @@
 
   // Build a broader catalog link from the page query. This is used by the panel
   // header action so users can jump into the full Primo interface.
-  function buildFullCatalogSearchUrl(query) {
+  function buildFullCatalogSearchUrl(query, context = {}) {
     const url = new URL(CONFIG.catalog.baseUrl);
     applyCatalogDefaults(url);
-    url.searchParams.set("query", `${CONFIG.catalog.queryPrefix}${sanitizeQuery(query)}`);
+    url.searchParams.set("query", `${CONFIG.catalog.queryPrefix}${sanitizeQuery(query, context)}`);
     return url.toString();
   }
 
@@ -315,60 +228,22 @@
     return url.toString();
   }
 
-  // Turn one Google query into a short list of progressively broader SRU
-  // strategies. We stop at the first candidate that returns records.
-  function buildCandidateQueries(query) {
-    const cleaned = sanitizeQuery(query);
-    const usefulTokens = getUsefulTokens(cleaned).slice(0, CONFIG.heuristics.keywordCandidateLimit);
-    const escapedPhrase = escapeCqlTerm(cleaned);
-    const quotedPhraseMatch = cleaned.match(/"([^"]+)"/);
-    const candidates = [];
+  function getSearchPlannerOptions(context = {}) {
+    return {
+      maxQueryWords: CONFIG.heuristics.maxQueryWords,
+      maxScholarWords: CONFIG.heuristics.maxScholarWords,
+      minUsefulWords: CONFIG.heuristics.minUsefulWords,
+      keywordCandidateLimit: CONFIG.heuristics.keywordCandidateLimit,
+      sourceType: context.sourceType || ""
+    };
+  }
 
-    if (quotedPhraseMatch?.[1]) {
-      candidates.push({
-        label: "quoted title phrase",
-        summary: `Tried exact phrase: “${quotedPhraseMatch[1]}”`,
-        cql: `alma.title="${escapeCqlTerm(quotedPhraseMatch[1])}"`
-      });
-    }
+  function sanitizeQuery(query, context = {}) {
+    return SearchIntelligence.sanitizeQuery(query, context, getSearchPlannerOptions(context));
+  }
 
-    candidates.push({
-      label: "title phrase",
-      summary: `Matched title phrase: “${cleaned}”`,
-      cql: `alma.title="${escapedPhrase}"`
-    });
-
-    if (usefulTokens.length >= 2) {
-      candidates.push({
-        label: "title keywords",
-        summary: `Matched title keywords: ${usefulTokens.join(", ")}`,
-        cql: usefulTokens.map((token) => `alma.title="${escapeCqlTerm(token)}"`).join(" and ")
-      });
-    }
-
-    if (usefulTokens.length >= 2) {
-      candidates.push({
-        label: "any-field keywords",
-        summary: `Matched keywords anywhere: ${usefulTokens.join(", ")}`,
-        cql: usefulTokens.map((token) => `alma.any="${escapeCqlTerm(token)}"`).join(" and ")
-      });
-    }
-
-    if (usefulTokens.length >= 1) {
-      candidates.push({
-        label: "creator + title mix",
-        summary: `Matched likely creator/title terms: ${usefulTokens.join(", ")}`,
-        cql: usefulTokens
-          .map((token, index) => (
-            index === usefulTokens.length - 1
-              ? `alma.creator="${escapeCqlTerm(token)}"`
-              : `alma.title="${escapeCqlTerm(token)}"`
-          ))
-          .join(" and ")
-      });
-    }
-
-    return candidates;
+  function buildSearchPlan(query, context = {}) {
+    return SearchIntelligence.buildSearchPlan(query, context, getSearchPlannerOptions(context));
   }
 
   // Ensure a hidden live region exists for announcing dynamic status changes to
@@ -414,7 +289,6 @@
       summary.hidden = !message;
     }
   }
-
   // Remove existing results before rendering a new set.
   function clearResults(panel) {
     const list = panel.querySelector(`.${CLASSES.list}`);
@@ -512,6 +386,7 @@
         .join(" ")
     );
   }
+
 
   // Parse either print (AVA) or electronic (AVE) availability fields and keep
   // their status values, locations, and call numbers together.
@@ -617,7 +492,8 @@
       throw new Error(normalizeText(diagnostic.textContent) || "SRU diagnostic returned.");
     }
 
-    const numberOfRecords = Number.parseInt(xml.querySelector("numberOfRecords")?.textContent || "0", 10);
+    const numberOfRecordsNode = xml.querySelector("numberOfRecords");
+    const numberOfRecords = Number.parseInt((numberOfRecordsNode && numberOfRecordsNode.textContent) || "0", 10);
     if (!numberOfRecords) {
       return [];
     }
@@ -629,60 +505,62 @@
 
   // Run the candidate SRU searches from most precise to broadest and cache the
   // first successful payload for the normalized query.
-  async function fetchCatalogResults(query) {
-    const normalizedQuery = sanitizeQuery(query);
-    const cacheKey = normalizedQuery.toLowerCase();
+  async function fetchCatalogResults(query, context = {}) {
+  const plan = buildSearchPlan(query, context);
+  const normalizedQuery = (plan.analysis && plan.analysis.cleanedQuery) || sanitizeQuery(query, context);
+  const cacheKey = `${context.sourceType || "google"}::${normalizedQuery.toLowerCase()}`;
 
-    if (queryCache.has(cacheKey)) {
-      return queryCache.get(cacheKey);
+  if (queryCache.has(cacheKey)) {
+    return queryCache.get(cacheKey);
+  }
+
+  const fetchPromise = (async () => {
+    let lastError = null;
+
+    for (const candidate of plan.candidates) {
+      const url = buildSruUrl(candidate.cql);
+      debugLog("Trying SRU candidate", candidate, url);
+
+      try {
+        const response = await fetch(url, {
+          method: "GET",
+          credentials: "omit"
+        });
+
+        if (!response.ok) {
+          throw new Error(`SRU request failed with status ${response.status}`);
+        }
+
+        const xmlText = await response.text();
+        const results = parseSruResponse(xmlText);
+
+        if (results.length > 0) {
+          return {
+            results,
+            candidate,
+            plan
+          };
+        }
+      } catch (error) {
+        lastError = error;
+        debugLog("SRU candidate failed", candidate, error);
+      }
     }
 
-    const fetchPromise = (async () => {
-      const candidates = buildCandidateQueries(normalizedQuery);
-      let lastError = null;
+    if (lastError) {
+      throw lastError;
+    }
 
-      for (const candidate of candidates) {
-        const url = buildSruUrl(candidate.cql);
-        debugLog("Trying SRU candidate", candidate, url);
+    return {
+      results: [],
+      candidate: null,
+      plan
+    };
+  })();
 
-        try {
-          const response = await fetch(url, {
-            method: "GET",
-            credentials: "omit"
-          });
-
-          if (!response.ok) {
-            throw new Error(`SRU request failed with status ${response.status}`);
-          }
-
-          const xmlText = await response.text();
-          const results = parseSruResponse(xmlText);
-
-          if (results.length > 0) {
-            return {
-              results,
-              candidate
-            };
-          }
-        } catch (error) {
-          lastError = error;
-          debugLog("SRU candidate failed", candidate, error);
-        }
-      }
-
-      if (lastError) {
-        throw lastError;
-      }
-
-      return {
-        results: [],
-        candidate: null
-      };
-    })();
-
-    queryCache.set(cacheKey, fetchPromise);
-    return fetchPromise;
-  }
+  queryCache.set(cacheKey, fetchPromise);
+  return fetchPromise;
+}
 
   // Create screen-reader text that warns when a link opens a new tab.
   function createNewTabHint() {
@@ -831,7 +709,7 @@
       const actions = panel.querySelector(`.${CLASSES.actions}`);
       if (actions) {
         actions.appendChild(
-          createActionLink("Search full catalog", buildFullCatalogSearchUrl(context.query), CLASSES.actionLink)
+          createActionLink("Search full catalog", buildFullCatalogSearchUrl(context.query, context), CLASSES.actionLink)
         );
         actions.appendChild(createToggleButton(panel));
       }
@@ -856,7 +734,7 @@
 
     const fullCatalogLink = panel.querySelector(`.${CLASSES.actionLink}`);
     if (fullCatalogLink) {
-      fullCatalogLink.href = buildFullCatalogSearchUrl(context.query);
+      fullCatalogLink.href = buildFullCatalogSearchUrl(context.query, context);
       fullCatalogLink.setAttribute("aria-label", `Search full catalog for ${context.query} (opens in a new tab)`);
     }
 
@@ -966,11 +844,14 @@
     list.appendChild(fragment);
 
     setPanelStatus(panel, STATUS.resultsLoaded(payload.results.length), { busy: false });
-    setPanelSummary(
-      panel,
-      payload.candidate?.summary ||
-        `Showing top ${payload.results.length} matches for “${context.query}” from ${context.pageLabel}.`
-    );
+const intentLabel = payload.plan?.analysis?.searchIntent
+  ? `Intent: ${payload.plan.analysis.searchIntent.replace(/-/g, " ")}. `
+  : "";
+
+setPanelSummary(
+  panel,
+  `${intentLabel}${payload.candidate?.summary || `Showing top ${payload.results.length} matches for “${context.query}” from ${context.pageLabel}.`}`
+);
     announce(STATUS.resultsLoaded(payload.results.length));
   }
 
@@ -1017,19 +898,20 @@
 
     clearResults(panel);
 
-    if (!shouldSearchCatalog(query, context)) {
-      setPanelSummary(panel, "");
-      setPanelStatus(panel, STATUS.skipped, { busy: false });
-      announce(STATUS.skipped);
-      return;
-    }
+const searchPlan = buildSearchPlan(query, context);
+if (!searchPlan.shouldSearch) {
+  setPanelSummary(panel, "");
+  setPanelStatus(panel, STATUS.skipped, { busy: false });
+  announce(STATUS.skipped);
+  return;
+}
 
     const requestToken = ++runtimeState.activeRequestToken;
     setPanelStatus(panel, STATUS.loading, { busy: true });
     setPanelSummary(panel, "");
 
     try {
-      const payload = await fetchCatalogResults(query);
+      const payload = await fetchCatalogResults(query, context);
       if (requestToken !== runtimeState.activeRequestToken) {
         return;
       }

@@ -5,56 +5,57 @@
     <title>UMCP Library Checker</title>
     <style>
       body {
-        font-family: Arial, sans-serif;
         margin: 0;
         padding: 12px;
         width: 300px;
-        color: #222;
+        box-sizing: border-box;
+        font-family: Arial, sans-serif;
+        color: #111827;
       }
-
       h1 {
+        margin: 0 0 10px;
         font-size: 16px;
-        margin: 0 0 8px 0;
       }
-
       .box {
         background: #f7f9fc;
-        border: 1px solid #d7dee8;
+        border: 1px solid #cbd5e1;
         border-radius: 8px;
         padding: 10px;
       }
-
-      .small {
+      p {
+        margin: 8px 0 0;
         font-size: 12px;
-        color: #555;
+        color: #1f2937;
       }
-
-      .status {
-        margin-top: 8px;
+      button {
+        width: 100%;
+        margin-top: 12px;
+        background: #0a6b2d;
+        color: #ffffff;
+        border: none;
+        border-radius: 6px;
+        padding: 10px;
+        font-size: 13px;
         font-weight: 600;
+        cursor: pointer;
       }
-
-      code {
-        font-size: 11px;
+      button:focus-visible {
+        outline: 3px solid #003a8c;
+        outline-offset: 2px;
+      }
+      button[disabled] {
+        opacity: 0.6;
+        cursor: default;
       }
     </style>
   </head>
   <body>
     <h1>UMCP Library Checker</h1>
     <div class="box">
-      <div id="pageStatus">Checking page…</div>
-      <div class="status" id="activationStatus"></div>
-      <p class="small">
-        This extension adds library catalog search links to UMCP bookstore course
-        materials pages.
-      </p>
-      <p class="small">
-        Supported page:
-        <br />
-        <code>/course-material-listing-page</code>
-      </p>
+      <p id="pageStatus" role="status" aria-live="polite">Popup is working.</p>
+      <button id="proxyButton" type="button" aria-label="Open the current page through the UMD proxy">Open current page with UMD proxy</button>
+      <p id="proxyMessage" aria-live="polite">This sends the current page through the University of Maryland proxy before loading it.</p>
     </div>
-
     <script src="popup.js"></script>
   </body>
 </html>

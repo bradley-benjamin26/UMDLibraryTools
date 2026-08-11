@@ -1,0 +1,153 @@
+TopTextbookExtension Refactor Plan
+=================================
+
+Goal
+----
+Improve maintainability, readability, and long-term extensibility without changing the extension’s current user-facing behavior.
+
+Scope
+-----
+Primary focus:
+- proxyButton.js
+- popup.js
+- related UI styling and event logic
+
+
+Refactor priorities
+-------------------
+
+1. Consolidate configuration values
+   Move magic values and repeated literals into a single configuration section.
+
+   Examples:
+   - ignored hostnames
+   - excluded host patterns
+   - scholarly detection hints
+   - paywall signals
+   - button theme colors
+   - live region message text
+
+   Why:
+   - makes behavior easier to tune and review
+   - reduces repeated hard-coded strings throughout the logic
+   - makes future updates safer
+
+2. Separate concerns inside proxyButton.js
+   The file is doing too many jobs at once:
+   - page detection
+   - localStorage handling
+   - toolbar rendering
+   - search form logic
+   - button styling
+   - accessibility announcements
+
+   Recommended structure:
+   - detection helpers
+   - storage helpers
+   - toolbar creation helpers
+   - interaction handlers
+   - theme utilities
+
+   Why:
+   - each helper has a single responsibility
+   - the flow becomes easier to follow
+   - it reduces nested logic and repetition
+
+3. Centralize repeated UI state logic
+   Several snippets repeat the same pattern:
+   - update aria-expanded
+   - remove aria-controls
+   - focus the trigger
+   - announce status to the live region
+
+   Suggested helper names:
+   - openSearchPanel()
+   - closeSearchPanel()
+   - setSearchButtonState(isOpen)
+   - announceToolbarMessage(message)
+
+   Why:
+   - simplifies the event handlers
+   - makes keyboard logic easier to verify
+   - reduces copy-paste behavior drift
+
+4. Replace some inline style blocks with CSS class themes
+   The code currently builds many button styles with inline object literals.
+
+   Better pattern:
+   - base button class for shared layout and spacing
+   - theme classes for primary, secondary, neutral styles
+   - JavaScript only handles dynamic focus/hover adjustments
+
+   Why:
+   - simpler to maintain
+   - easier to align with UMD branding updates
+   - less visual logic embedded in JavaScript
+
+5. Simplify popup.js helper logic
+   The popup is compact, but it can be made clearer by extracting small helpers:
+   - getCurrentTab()
+   - getTabUrl()
+   - updateStatusMessage()
+   - showErrorMessage()
+
+   Why:
+   - less nested branching
+   - easier to test and extend
+   - clearer responsibilities
+
+6. Reduce repeated DOM access and repeated append logic
+   The code repeats patterns such as:
+   - document.body || document.documentElement
+   - root element selection
+   - form and live region setup
+   - repeated button state updates
+
+   Suggested cleanups:
+   - create helper for page-root insertion
+   - centralize creation of live region and toolbar container
+   - keep DOM creation and setup predictable
+
+   Why:
+   - a small readability improvement with low risk
+   - slightly cleaner performance profile
+
+7. Preserve the behavior contract during refactor
+   The refactor should not modify the current behavior:
+   - toolbar appears only on likely scholarly pages
+   - host skip feature keeps working
+   - search form opens and closes correctly
+   - Escape closes and returns focus to the trigger
+   - screen-reader announcements remain accurate
+   - UMD proxy and Discover flow still work as designed
+
+8. Recommended implementation order
+   1. Extract config values from proxyButton.js
+   2. Add helper functions for search toggle and announcements
+   3. Reduce repeated inline styling and move to class-based button themes
+   4. Clean up popup.js helper structure
+   5. Re-run validation after each stage
+
+9. Expected result
+   After this refactor, the code should be:
+   - easier to read at a glance
+   - easier to modify without side effects
+   - easier to extend with more accessibility or UX improvements
+   - more maintainable over time without changing the extension’s behavior
+
+
+Implementation notes
+--------------------
+- Keep changes incremental and behavior-preserving.
+- Validate after each refactor stage with syntax checks and browser reload testing.
+- Prefer readability over micro-optimizations unless a performance issue is proven.
+- Avoid large rewrites; smaller refactors are safer and easier to review.
+
+
+Suggested next step
+-------------------
+Start with the most impactful cleanup in proxyButton.js:
+- extract configuration constants
+- add open/close search panel helpers
+- centralize the live region announcements
+- then address styling and popup cleanup

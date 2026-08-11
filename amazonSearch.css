@@ -13,8 +13,8 @@
   --umd-ink: #24292f;
   --umd-muted: #4b5563;
   --umd-border: #d0d7de;
-  --umd-surface: #fff8e1;
-  --umd-surface-strong: #fff1b8;
+  --umd-surface: #f8f8f8;
+  --umd-surface-strong: #f3f4f6;
   --umd-success-bg: #edf7ee;
   --umd-success-fg: #137333;
   --umd-danger-bg: #fef3f2;
@@ -34,7 +34,7 @@
   padding: 20px;
   border: 1px solid var(--umd-red);
   border-radius: 16px;
-  background: linear-gradient(180deg, var(--umd-surface) 0%, #fffdf5 100%);
+  background: linear-gradient(180deg, #ffffff 0%, var(--umd-surface) 100%);
   color: var(--umd-ink);
   box-shadow: 0 2px 8px rgba(26, 26, 26, 0.08);
 }
@@ -266,9 +266,9 @@
 
 .umcp-amazon-catalog-panel__badge.is-unknown,
 .umcp-amazon-catalog-panel__badge.is-muted {
-  background: #5b616b;
+  background: #2f3742;
   color: var(--umd-white);
-  border-color: #4b5563;
+  border-color: #1f2937;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "UMCP Library Textbook Checker",
+  "name": "UMCP Library Search",
   "version": "0.1.0",
-  "description": "Adds UMCP library catalog search links to bookstore course material pages.",
+  "description": "Adds general UMCP library catalog search links to supported pages.",
   "permissions": [
     "activeTab",
     "storage"
@@ -18,7 +18,7 @@
         "https://umcp.bncollege.com/course-material-listing-page*"
       ],
       "js": [
-        "content.js"
+        "searchIntelligence.js","content.js"
       ],
       "css": [
         "content.css"
@@ -31,16 +31,24 @@
         "https://www.google.com/search*",
         "https://scholar.google.com/scholar*"
       ],
-      "js": ["googleSearch.js"],
+      "js": ["searchIntelligence.js", "googleSearch.js"],
       "css": ["googleSearch.css"],
       "run_at": "document_idle"
     },
-        {
+    {
       "matches": [
         "https://www.amazon.com/*"
       ],
-      "js": ["amazonSearch.js"],
+      "js": ["searchIntelligence.js", "amazonSearch.js"],
       "css": ["amazonSearch.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": ["proxyButton.js"],
       "run_at": "document_idle"
     }
   ],

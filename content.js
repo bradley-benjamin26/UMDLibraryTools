@@ -1,4 +1,6 @@
 (() => {
+  "use strict";
+
   /**
    * Toggle debug logging in the browser console.
    *
@@ -11,7 +13,39 @@
    * - true while developing/debugging
    * - false for quieter production behavior
    */
-  const DEBUG = true;
+  const DEBUG = false;
+
+  /**
+   * Optional shared search-intelligence module.
+   *
+   * The bookstore feature is primarily ISBN-driven, so this module is not
+   * strictly required. When present, it enables a smarter title/author SRU
+   * fallback for book blocks that do not expose a usable ISBN.
+   *
+   * If searchIntelligence.js is loaded in the manifest before content.js,
+   * it will be available here automatically. If it is absent, the bookstore
+   * feature degrades gracefully and still performs ISBN-based lookups as normal.
+   */
+  const SearchIntelligence = globalThis.UMCPSearchIntelligence || null;
+
+  /**
+   * Central configuration for SRU lookups and search heuristics.
+   *
+   * sruBaseUrl: shared by both the ISBN and title/author lookup paths.
+   *
+   * heuristics: passed to the shared search-intelligence module when building
+   * fallback query plans for books that lack a usable ISBN. These values are
+   * intentionally conservative because bookstore title/author text is structured
+   * and does not need aggressive natural-language cleanup.
+   */
+  const CONFIG = {
+    sruBaseUrl: "https://usmai-umcp.alma.exlibrisgroup.com/view/sru/01USMAI_UMCP",
+    heuristics: {
+      maxQueryWords: 8,
+      minUsefulWords: 2,
+      keywordCandidateLimit: 3
+    }
+  };
 
   /**
    * Centralized CSS selectors used to read the bookstore page.
@@ -70,7 +104,7 @@
     searchLabel: "umcp-library-search-label",
     availabilityBlock: "umcp-library-availability-block",
     availabilityLabel: "umcp-library-availability-label",
-    availabilityText: "umcp-library-availability-text",
+    availabilityText: "umcp-library-availability-text"
   };
 
   /**
@@ -81,9 +115,6 @@
     summaryTitle: "umcp-library-summary-title",
     globalLiveRegion: "umcp-library-global-live-region"
   };
-
-  const TOP_TEXTBOOKS_TOOLTIP =
-  "Top Textbooks is a UMD Libraries program which provides free access to textbooks for the largest, most common courses.";
 
   /**
    * User-facing library availability statuses.
@@ -96,7 +127,7 @@
     CHECKING: "Checking...",
     AVAILABLE: "Available",
     NOT_AVAILABLE: "Not available",
-    NO_MATCH: "No SRU match",
+    NO_MATCH: "No catalog match",
     FAILED: "Lookup failed"
   };
 
@@ -112,6 +143,10 @@
    * That means multiple consumers can await the same in-flight request.
    */
   const sruCache = new Map();
+
+  // ---------------------------------------------------------------------------
+  // Utility functions
+  // ---------------------------------------------------------------------------
 
   /**
    * Debug logger wrapper so console noise can be turned on/off centrally.
@@ -149,6 +184,18 @@
   }
 
   /**
+   * Escape a string for safe interpolation into a CQL query expression.
+   *
+   * This is used when building manual title/author SRU queries without
+   * the shared search-intelligence module.
+   */
+  function escapeCqlTerm(value) {
+    return normalizeText(value)
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"');
+  }
+
+  /**
    * Encode a string safely for use in a URL query parameter.
    */
   function encodeValue(value) {
@@ -162,30 +209,16 @@
    */
   function isVisible(element) {
     if (!(element instanceof HTMLElement)) return false;
-
     const style = window.getComputedStyle(element);
     if (style.display === "none") return false;
     if (style.visibility === "hidden") return false;
     if (element.offsetParent === null) return false;
-
     return true;
   }
 
-  /**
-   * Build a Primo Top Textbooks ISBN search URL.
-   *
-   * This remains useful even though SRU availability now uses Alma SRU + ISBN.
-   */
-  function buildTopTextbookIsbnUrl(isbn) {
-    return `https://usmai-umcp.primo.exlibrisgroup.com/discovery/search?query=isbn,contains,${encodeValue(normalizeIsbn(isbn))},AND&tab=TopText&search_scope=TopTextbooks&vid=01USMAI_UMCP:UMCP&mode=advanced&offset=0`;
-  }
-
-  /**
-   * Build a Primo Top Textbooks title/author search URL.
-   */
-  function buildTopTextbookTitleAuthorUrl(title, author) {
-    return `https://usmai-umcp.primo.exlibrisgroup.com/discovery/search?query=creator,contains,${encodeValue(author)},AND&query=title,contains,${encodeValue(title)},AND&tab=TopText&search_scope=TopTextbooks&vid=01USMAI_UMCP:UMCP&lang=en&mode=advanced&offset=0`;
-  }
+  // ---------------------------------------------------------------------------
+  // URL builders
+  // ---------------------------------------------------------------------------
 
   /**
    * Build a general Primo search URL.
@@ -204,22 +237,19 @@
     const hasAuthor = !!normalizeText(author);
 
     if (hasTitle && hasAuthor) {
-      return `https://usmai-umcp.primo.exlibrisgroup.com/discovery/search?vid=01USMAI_UMCP:UMCP&query=creator,contains,${encodeValue(author)},AND&query=title,contains,${encodeValue(title)}`;
+      return `https://usmai-umcp.primo.exlibrisgroup.com/discovery/search?vid=01USMAI_UMCP:UMCP&query=creator,contains,${encodeValue(author)},AND&query=title,contains,${encodeValue(title)},AND`;
     }
-
     if (hasTitle) {
       return `https://usmai-umcp.primo.exlibrisgroup.com/discovery/search?vid=01USMAI_UMCP:UMCP&query=title,contains,${encodeValue(title)}`;
     }
-
     if (hasAuthor) {
       return `https://usmai-umcp.primo.exlibrisgroup.com/discovery/search?vid=01USMAI_UMCP:UMCP&query=creator,contains,${encodeValue(author)}`;
     }
-
     return `https://usmai-umcp.primo.exlibrisgroup.com/discovery/search?vid=01USMAI_UMCP:UMCP`;
   }
 
   /**
-   * Build the Alma SRU URL used for automated library availability lookup.
+   * Build the Alma SRU URL used for ISBN-based availability lookup.
    *
    * Important:
    * - We use ISBN because it is far more reliable than title/author matching.
@@ -235,11 +265,61 @@
   function buildSruIsbnUrl(isbn) {
     const cleanIsbn = normalizeIsbn(isbn);
     const query = `alma.isbn="${cleanIsbn}"`;
-    const url = `https://usmai-umcp.alma.exlibrisgroup.com/view/sru/01USMAI_UMCP?version=1.2&operation=searchRetrieve&recordSchema=marcxml&query=${encodeURIComponent(query)}`;
+    const url = `${CONFIG.sruBaseUrl}?version=1.2&operation=searchRetrieve&recordSchema=marcxml&query=${encodeURIComponent(query)}`;
 
     debugLog("SRU ISBN query:", query);
     debugLog("SRU ISBN URL:", url);
 
+    return url;
+  }
+
+  /**
+   * Build an Alma SRU URL for a title/author fallback search.
+   *
+   * This is used when a book block does not expose a usable ISBN.
+   *
+   * When searchIntelligence.js is loaded, the shared search planner builds
+   * a smarter CQL query. Otherwise, a simple title + optional author CQL
+   * expression is used as a conservative fallback.
+   *
+   * Note: title/author searches are inherently less precise than ISBN searches.
+   * Results may include false positives for common or short titles.
+   */
+  function buildSruTitleAuthorUrl(title, author) {
+    let cql;
+
+    if (SearchIntelligence) {
+      // Use the shared search planner to generate a smarter CQL candidate.
+      // We join title and author into one normalized phrase and let the planner
+      // decide the best field-oriented CQL expression.
+      const query = normalizeText([title, author].filter(Boolean).join(" "));
+      const context = { sourceType: "bookstore" };
+      const plan = SearchIntelligence.buildSearchPlan(query, context, CONFIG.heuristics);
+
+      if (plan.candidates && plan.candidates.length > 0) {
+        cql = plan.candidates[0].cql;
+        debugLog("SRU title/author CQL via SearchIntelligence:", cql);
+      }
+    }
+
+    if (!cql) {
+      // Manual CQL fallback when the shared planner is unavailable.
+      // A combined title + author expression is more precise than title alone,
+      // but we gracefully degrade to title-only when author is absent.
+      const escapedTitle = escapeCqlTerm(title);
+      const escapedAuthor = author ? escapeCqlTerm(author) : "";
+
+      cql = escapedAuthor
+        ? `alma.title="${escapedTitle}" AND alma.creator="${escapedAuthor}"`
+        : `alma.title="${escapedTitle}"`;
+
+      debugLog("SRU title/author CQL fallback:", cql);
+    }
+
+    // Request only 3 records for title/author fallback; we only need the top match
+    // and a tighter result set reduces false-positive noise.
+    const url = `${CONFIG.sruBaseUrl}?version=1.2&operation=searchRetrieve&recordSchema=marcxml&query=${encodeURIComponent(cql)}&maximumRecords=3`;
+    debugLog("SRU title/author URL:", url);
     return url;
   }
 
@@ -250,8 +330,12 @@
    * statement itself to act as a link to the full Primo record.
    */
   function buildPrimoRecordUrl(mmsId) {
-    return `https://usmai-umcp.primo.exlibrisgroup.com/discovery/fulldisplay?docid=alma${encodeURIComponent(mmsId)}&context%3DL&vid=01USMAI_UMCP:UMCP&lang=en&search_scope=DN_and_CI&adaptor=Local%20Search%20Engine&tab=Everything`;
+    return `https://usmai-umcp.primo.exlibrisgroup.com/discovery/fulldisplay?docid=alma${encodeURIComponent(mmsId)}&context=L&vid=01USMAI_UMCP:UMCP&lang=en&search_scope=DN_and_CI&adaptor=Local%20Search%20Engine&tab=Everything`;
   }
+
+  // ---------------------------------------------------------------------------
+  // Accessibility helpers
+  // ---------------------------------------------------------------------------
 
   /**
    * Ensure that a hidden global live region exists.
@@ -305,6 +389,10 @@
     return hint;
   }
 
+  // ---------------------------------------------------------------------------
+  // DOM component builders
+  // ---------------------------------------------------------------------------
+
   /**
    * Create a styled link used in injected UI.
    *
@@ -326,7 +414,6 @@
     }
 
     link.appendChild(createNewTabHint());
-
     return link;
   }
 
@@ -369,9 +456,19 @@
 
     row.appendChild(term);
     row.appendChild(description);
-
     return row;
   }
+
+  function createSearchLabel() {
+    const label = document.createElement("div");
+    label.className = CLASSES.searchLabel;
+    label.textContent = "Search UMD Discover";
+    return label;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Book data extraction
+  // ---------------------------------------------------------------------------
 
   /**
    * Clean author text extracted from the bookstore page.
@@ -395,12 +492,10 @@
     const rows = bookBlock.querySelectorAll(SELECTORS.attributeRow);
 
     for (const row of rows) {
-      const label = normalizeText(
-        row.querySelector(SELECTORS.attributeTitle)?.textContent || ""
-      );
-      const value = normalizeText(
-        row.querySelector(SELECTORS.attributeValue)?.textContent || ""
-      );
+      const titleNode = row.querySelector(SELECTORS.attributeTitle);
+      const valueNode = row.querySelector(SELECTORS.attributeValue);
+      const label = normalizeText(titleNode ? titleNode.textContent : "");
+      const value = normalizeText(valueNode ? valueNode.textContent : "");
 
       if (label.toLowerCase().includes(labelText.toLowerCase())) {
         return value;
@@ -416,29 +511,24 @@
    * This is the canonical normalization step before building UI or SRU lookups.
    */
   function extractBookData(bookBlock) {
-    const title = normalizeText(
-      bookBlock.querySelector(SELECTORS.titleText)?.textContent || ""
-    );
+    const titleNode = bookBlock.querySelector(SELECTORS.titleText);
+    const authorNode = bookBlock.querySelector(SELECTORS.author);
 
-    const author = cleanAuthor(
-      bookBlock.querySelector(SELECTORS.author)?.textContent || ""
-    );
-
+    const title = normalizeText((titleNode && titleNode.textContent) || "");
+    const author = cleanAuthor((authorNode && authorNode.textContent) || "");
     const edition = getAttributeValue(bookBlock, "Edition");
     const publisher = getAttributeValue(bookBlock, "Publisher");
     const isbn = normalizeIsbn(getAttributeValue(bookBlock, "ISBN 13"));
 
-    return {
-      title,
-      author,
-      edition,
-      publisher,
-      isbn
-    };
+    return { title, author, edition, publisher, isbn };
   }
 
   /**
    * Determine whether a DOM block appears to represent a real, processable book.
+   *
+   * Previously this required both a title and an ISBN. Now a title + author is
+   * also accepted so that the title/author SRU fallback path can run for books
+   * that do not expose a usable ISBN.
    *
    * Why we filter:
    * - avoid hidden elements
@@ -452,13 +542,18 @@
 
     const titleNode = bookBlock.querySelector(SELECTORS.titleText);
     const attributesWrap = bookBlock.querySelector(SELECTORS.attributesWrap);
-    const isbn = getAttributeValue(bookBlock, "ISBN 13");
 
     if (!titleNode || !attributesWrap) return false;
     if (!normalizeText(titleNode.textContent || "")) return false;
-    if (!normalizeText(isbn)) return false;
 
-    return true;
+    // A block is eligible when it has a title and at least one of: ISBN or author.
+    // ISBN is strongly preferred because it produces precise SRU matches.
+    // Author enables a less precise title/author fallback when ISBN is absent.
+    const isbn = getAttributeValue(bookBlock, "ISBN 13");
+    const authorNode = bookBlock.querySelector(SELECTORS.author);
+    const author = cleanAuthor((authorNode && authorNode.textContent) || "");
+
+    return !!(normalizeText(isbn) || normalizeText(author));
   }
 
   /**
@@ -482,11 +577,8 @@
    */
   function getAllBooks() {
     return getBookBlocks()
-      .map(block => ({
-        ...extractBookData(block),
-        block
-      }))
-      .filter(book => book.title && book.isbn);
+      .map(block => ({ ...extractBookData(block), block }))
+      .filter(book => book.title && (book.isbn || book.author));
   }
 
   /**
@@ -501,26 +593,135 @@
     return `${normalizeText(book.title).toLowerCase()}|${normalizeText(book.author).toLowerCase()}`;
   }
 
+  // ---------------------------------------------------------------------------
+  // SRU fetch helpers
+  // ---------------------------------------------------------------------------
+
   /**
-   * Fetch library availability from Alma SRU using ISBN.
+   * Parse an SRU XML response and extract availability and MMS ID.
    *
-   * SRU logic:
-   * - query alma.isbn="{isbn}"
-   * - parse returned MARCXML
-   * - inspect AVA fields
-   * - if any subfield code="e" is "available", treat the item as available
-   * - inspect the MARC 001 field for the Alma MMS ID
+   * Shared by both the ISBN and title/author fetch paths.
+   *
+   * Availability rule:
+   * - inspect all AVA fields
+   * - if any subfield code="e" is "available", treat as available
+   * - the MMS ID comes from MARC controlfield 001
+   *
+   * Returns:
+   * { status, mmsId, recordUrl }
+   */
+  function parseSruAvailability(xmlText, logLabel) {
+    const xml = new DOMParser().parseFromString(xmlText, "text/xml");
+
+    const parserError = xml.querySelector("parsererror");
+    if (parserError) {
+      throw new Error("Failed to parse SRU XML response");
+    }
+
+    // Alma SRU may include diagnostics for malformed queries.
+    // Log these for debugging but do not treat them as fatal errors.
+    const diagnostics = xml.querySelector("diagnostics diagnostic message");
+    if (diagnostics) {
+      debugLog("SRU diagnostic:", diagnostics.textContent);
+    }
+
+    const numberOfRecordsNode = xml.querySelector("numberOfRecords");
+    const numberOfRecords = Number((numberOfRecordsNode && numberOfRecordsNode.textContent) || "0");
+    debugLog("SRU numberOfRecords:", numberOfRecords, logLabel);
+
+    if (!numberOfRecords) {
+      return { status: LIBRARY_STATUS.NO_MATCH, mmsId: null, recordUrl: null };
+    }
+
+    const mmsId = normalizeText(
+      (Array.from(xml.getElementsByTagName("controlfield"))
+        .find(node => node.getAttribute("tag") === "001") || {}).textContent || ""
+    );
+
+    /**
+     * Availability rule:
+     * Search all AVA fields and inspect subfield code="e".
+     *
+     * Example value:
+     *   <subfield code="e">available</subfield>
+     */
+    const availabilityValues = Array.from(
+      xml.querySelectorAll('datafield[tag="AVA"] > subfield[code="e"]')
+    ).map(node => normalizeText(node.textContent).toLowerCase());
+
+    debugLog("SRU AVA subfield e values:", availabilityValues, logLabel);
+    debugLog("SRU MMS ID:", mmsId, logLabel);
+
+    const status = availabilityValues.some(v => v === "available")
+      ? LIBRARY_STATUS.AVAILABLE
+      : LIBRARY_STATUS.NOT_AVAILABLE;
+
+    return {
+      status,
+      mmsId: mmsId || null,
+      recordUrl: mmsId ? buildPrimoRecordUrl(mmsId) : null
+    };
+  }
+
+  /**
+   * Perform an ISBN-based Alma SRU lookup for a single book.
+   *
+   * ISBN is the primary lookup key because it is precise, stable, and
+   * not affected by title punctuation or subtitle wording variations.
+   */
+  async function fetchByIsbn(book) {
+    const url = buildSruIsbnUrl(book.isbn);
+    const response = await fetch(url);
+
+    debugLog("SRU ISBN response status:", response.status, "ISBN:", book.isbn);
+
+    if (!response.ok) {
+      throw new Error(`SRU request failed: ${response.status}`);
+    }
+
+    const xmlText = await response.text();
+    debugLog("SRU ISBN response preview:", xmlText.slice(0, 500));
+    return parseSruAvailability(xmlText, `ISBN:${book.isbn}`);
+  }
+
+  /**
+   * Perform a title/author SRU fallback lookup for a book without a usable ISBN.
+   *
+   * This path is less precise than ISBN lookup and may return false positives
+   * for common or short titles. It is used only when ISBN is genuinely absent.
+   *
+   * The query is built by buildSruTitleAuthorUrl(), which uses the shared
+   * search-intelligence module when available.
+   */
+  async function fetchByTitleAuthor(book) {
+    const url = buildSruTitleAuthorUrl(book.title, book.author);
+    const response = await fetch(url);
+
+    debugLog("SRU title/author response status:", response.status, "Title:", book.title);
+
+    if (!response.ok) {
+      throw new Error(`SRU title/author request failed: ${response.status}`);
+    }
+
+    const xmlText = await response.text();
+    debugLog("SRU title/author response preview:", xmlText.slice(0, 500));
+    return parseSruAvailability(xmlText, `title:${book.title}`);
+  }
+
+  /**
+   * Fetch library availability from Alma SRU.
+   *
+   * Lookup strategy:
+   * 1. ISBN first — most precise, used whenever a usable ISBN is present.
+   * 2. Title/author fallback — used only when ISBN is genuinely absent.
+   *    This path uses the shared search-intelligence module when available,
+   *    or a simple CQL expression otherwise.
+   *
+   * Results are cached as Promises so multiple consumers can await the same
+   * in-flight request without triggering duplicate SRU traffic.
    *
    * Returned result object:
-   * {
-   *   status,
-   *   mmsId,
-   *   recordUrl
-   * }
-   *
-   * Notes:
-   * - This uses caching to avoid duplicate requests.
-   * - This function returns a Promise<object>.
+   * { status, mmsId, recordUrl }
    */
   async function fetchLibraryAvailability(book) {
     const key = getBookCacheKey(book);
@@ -531,102 +732,33 @@
 
     const promise = (async () => {
       try {
-        if (!normalizeText(book.isbn)) {
-          debugLog("No ISBN available for SRU lookup:", book);
-          return {
-            status: LIBRARY_STATUS.NO_MATCH,
-            mmsId: null,
-            recordUrl: null
-          };
+        // ISBN path: always preferred when a usable ISBN is present.
+        if (normalizeText(book.isbn)) {
+          return await fetchByIsbn(book);
         }
 
-        const url = buildSruIsbnUrl(book.isbn);
-        const response = await fetch(url);
-
-        debugLog("SRU response status:", response.status, "ISBN:", book.isbn);
-
-        if (!response.ok) {
-          throw new Error(`SRU request failed: ${response.status}`);
+        // Title/author fallback: only reached when ISBN is genuinely missing.
+        // Less precise than ISBN lookup, but better than returning NO_MATCH
+        // immediately for books that could still be found by title and author.
+        if (normalizeText(book.title)) {
+          debugLog("No ISBN — attempting title/author SRU fallback:", book.title, book.author);
+          return await fetchByTitleAuthor(book);
         }
 
-        const xmlText = await response.text();
-        debugLog("SRU response preview:", xmlText.slice(0, 500));
-
-        const xml = new DOMParser().parseFromString(xmlText, "text/xml");
-
-        const parserError = xml.querySelector("parsererror");
-        if (parserError) {
-          throw new Error("Failed to parse SRU XML response");
-        }
-
-        /**
-         * Alma SRU may include diagnostics for malformed queries or other issues.
-         * This is useful for debugging but does not necessarily mean fatal failure.
-         */
-        const diagnostics = xml.querySelector("diagnostics diagnostic message");
-        if (diagnostics) {
-          debugLog("SRU diagnostic:", diagnostics.textContent);
-        }
-
-        const numberOfRecordsNode = xml.querySelector("numberOfRecords");
-        const numberOfRecords = Number(numberOfRecordsNode?.textContent || "0");
-
-        debugLog("SRU numberOfRecords:", numberOfRecords, "ISBN:", book.isbn);
-
-        if (!numberOfRecords) {
-          return {
-            status: LIBRARY_STATUS.NO_MATCH,
-            mmsId: null,
-            recordUrl: null
-          };
-        }
-
-        const mmsId = normalizeText(
-          Array.from(xml.getElementsByTagName("controlfield"))
-            .find(node => node.getAttribute("tag") === "001")
-            ?.textContent || ""
-        );
-
-        /**
-         * Availability rule:
-         * Search all AVA fields and inspect subfield code="e".
-         *
-         * Example value:
-         *   <subfield code="e">available</subfield>
-         */
-        const availabilityValues = Array.from(
-          xml.querySelectorAll('datafield[tag="AVA"] > subfield[code="e"]')
-        ).map(node => normalizeText(node.textContent).toLowerCase());
-
-        debugLog("SRU AVA subfield e values:", availabilityValues, "ISBN:", book.isbn);
-        debugLog("SRU MMS ID:", mmsId, "ISBN:", book.isbn);
-
-        if (availabilityValues.some(value => value === "available")) {
-          return {
-            status: LIBRARY_STATUS.AVAILABLE,
-            mmsId: mmsId || null,
-            recordUrl: mmsId ? buildPrimoRecordUrl(mmsId) : null
-          };
-        }
-
-        return {
-          status: LIBRARY_STATUS.NOT_AVAILABLE,
-          mmsId: mmsId || null,
-          recordUrl: mmsId ? buildPrimoRecordUrl(mmsId) : null
-        };
+        return { status: LIBRARY_STATUS.NO_MATCH, mmsId: null, recordUrl: null };
       } catch (error) {
         console.error("[UMCP Library Checker] Library availability lookup failed:", error, book);
-        return {
-          status: LIBRARY_STATUS.FAILED,
-          mmsId: null,
-          recordUrl: null
-        };
+        return { status: LIBRARY_STATUS.FAILED, mmsId: null, recordUrl: null };
       }
     })();
 
     sruCache.set(key, promise);
     return promise;
   }
+
+  // ---------------------------------------------------------------------------
+  // Availability rendering
+  // ---------------------------------------------------------------------------
 
   /**
    * Render the availability field.
@@ -643,9 +775,9 @@
 
     if (result.status === LIBRARY_STATUS.AVAILABLE && result.recordUrl) {
       const link = createLink(
-      LIBRARY_STATUS.AVAILABLE,
-      result.recordUrl,
-      `${CLASSES.availabilityLink} ${CLASSES.availabilityText}`
+        LIBRARY_STATUS.AVAILABLE,
+        result.recordUrl,
+        `${CLASSES.availabilityLink} ${CLASSES.availabilityText}`
       );
       container.appendChild(link);
       return;
@@ -654,12 +786,9 @@
     container.textContent = result.status;
   }
 
-  function createSearchLabel() {
-    const label = document.createElement("div");
-    label.className = CLASSES.searchLabel;
-    label.textContent = "Search UMD Discover";
-    return label;
-  }
+  // ---------------------------------------------------------------------------
+  // Per-book panel injection
+  // ---------------------------------------------------------------------------
 
   /**
    * Inject the per-book library panel below the bookstore metadata block.
@@ -667,7 +796,7 @@
    * This panel shows:
    * - normalized bibliographic metadata
    * - live-updating library availability
-   * - links to Top Textbooks and General Search
+   * - a General Search link
    */
   function injectBookPanel(bookBlock, book) {
     if (bookBlock.querySelector(`.${CLASSES.bookPanel}`)) return;
@@ -701,11 +830,11 @@
     metaList.appendChild(createMetaLine("Publisher", book.publisher || "Not found"));
     metaList.appendChild(createMetaLine("ISBN", book.isbn || "Not found"));
 
+    panel.appendChild(metaList);
+
     /**
      * Library availability is a live region because it changes asynchronously.
      */
-    panel.appendChild(metaList);
-
     const availabilityLine = createMetaLine(
       "Library Availability",
       LIBRARY_STATUS.CHECKING,
@@ -714,14 +843,14 @@
     );
 
     const availabilityLabel = availabilityLine.querySelector("dt");
-      if (availabilityLabel) {
-        availabilityLabel.classList.add(CLASSES.availabilityLabel);
-      }
+    if (availabilityLabel) {
+      availabilityLabel.classList.add(CLASSES.availabilityLabel);
+    }
 
     const availabilityValueNode = availabilityLine.querySelector("dd");
-      if (availabilityValueNode) {
-        availabilityValueNode.classList.add(CLASSES.availabilityText);
-      }
+    if (availabilityValueNode) {
+      availabilityValueNode.classList.add(CLASSES.availabilityText);
+    }
 
     panel.appendChild(availabilityLine);
 
@@ -729,34 +858,12 @@
     links.className = CLASSES.linksWrap;
     links.setAttribute("aria-label", "Library search links");
 
-    if (book.isbn) {
-      links.appendChild(
-       createLink(
-        "Top Textbooks (ISBN)",
-        buildTopTextbookIsbnUrl(book.isbn),
-        CLASSES.link,
-        { title: TOP_TEXTBOOKS_TOOLTIP }
-)
-      );
-    }
-
     if (book.title || book.author) {
       links.appendChild(
-        createLink(
-          "Top Textbooks (Title/Author)",
-          buildTopTextbookTitleAuthorUrl(book.title, book.author),
-          CLASSES.link,
-          { title: TOP_TEXTBOOKS_TOOLTIP }
-        )
-      );
-
-      links.appendChild(
-        createLink(
-          "General Search",
-          buildGeneralUrl(book.title, book.author)
-        )
+        createLink("General Search", buildGeneralUrl(book.title, book.author), CLASSES.link)
       );
     }
+
     panel.appendChild(createSearchLabel());
     panel.appendChild(links);
 
@@ -786,12 +893,15 @@
     availabilityNode.textContent = LIBRARY_STATUS.CHECKING;
 
     const result = await fetchLibraryAvailability(book);
-
     setAvailabilityContent(availabilityNode, result);
     panel.setAttribute("aria-busy", "false");
 
     announceMessage(`Library availability updated for ${book.title}: ${result.status}`);
   }
+
+  // ---------------------------------------------------------------------------
+  // Toolbar
+  // ---------------------------------------------------------------------------
 
   /**
    * Get the top-level BNCollege course materials container.
@@ -800,207 +910,6 @@
    */
   function getMainContainer() {
     return document.querySelector(SELECTORS.mainContainer);
-  }
-
-  /**
-   * Remove the extracted books summary panel, if it exists.
-   *
-   * The announce option exists so we can avoid duplicate announcements when
-   * re-rendering the panel internally.
-   */
-  function removeSummaryPanel({ announce = true } = {}) {
-    const panel = document.querySelector(`.${CLASSES.summaryPanel}`);
-    if (panel) {
-      panel.remove();
-      if (announce) {
-        announceMessage("Extracted books list hidden.");
-      }
-    }
-  }
-
-  /**
-   * Create one item in the extracted books summary list.
-   *
-   * Accessibility:
-   * - uses <li> inside an ordered list
-   * - uses <h3> heading for item title
-   * - uses <dl> for metadata
-   * - uses aria-busy while async availability loads
-   */
-  function createSummaryItem(book, index) {
-    const item = document.createElement("li");
-    item.className = CLASSES.summaryItem;
-    item.setAttribute("aria-busy", "true");
-
-    const itemTitle = document.createElement("h3");
-    itemTitle.className = CLASSES.summaryItemTitle;
-    itemTitle.textContent = `${index + 1}. ${book.title}`;
-
-    const metaList = createMetaList();
-    metaList.classList.add(CLASSES.summaryItemMeta);
-
-    metaList.appendChild(createMetaLine("Author", book.author || "Not found"));
-    metaList.appendChild(createMetaLine("Edition", book.edition || "Not found"));
-    metaList.appendChild(createMetaLine("Publisher", book.publisher || "Not found"));
-    metaList.appendChild(createMetaLine("ISBN", book.isbn || "Not found"));
-
-    const availabilityLine = createMetaLine(
-      "Library Availability",
-      LIBRARY_STATUS.CHECKING,
-      `${CLASSES.availabilityValue} ${CLASSES.availabilityBlock}`,
-      { live: true }
-    );
-
-    const availabilityLabel = availabilityLine.querySelector("dt");
-      if (availabilityLabel) {
-        availabilityLabel.classList.add(CLASSES.availabilityLabel);
-      }
-
-    const availabilityValueNode = availabilityLine.querySelector("dd");
-      if (availabilityValueNode) {
-        availabilityValueNode.classList.add(CLASSES.availabilityText);
-      }
-
-    metaList.appendChild(availabilityLine);
-
-    const links = document.createElement("div");
-    links.className = CLASSES.summaryLinks;
-    links.setAttribute("aria-label", `Search links for ${book.title}`);
-
-    if (book.isbn) {
-      links.appendChild(
-        createLink(
-          "Top Textbooks (ISBN)",
-          buildTopTextbookIsbnUrl(book.isbn),
-          CLASSES.summaryLink,
-          { title: TOP_TEXTBOOKS_TOOLTIP }
-        )
-      );
-    }
-
-    if (book.title || book.author) {
-      links.appendChild(
-        createLink(
-          "Top Textbooks (Title/Author)",
-          buildTopTextbookTitleAuthorUrl(book.title, book.author),
-          CLASSES.summaryLink,
-          { title: TOP_TEXTBOOKS_TOOLTIP }
-        )
-      );
-
-      links.appendChild(
-        createLink(
-          "General Search",
-          buildGeneralUrl(book.title, book.author),
-          CLASSES.summaryLink
-        )
-      );
-    }
-
-    item.appendChild(itemTitle);
-    item.appendChild(metaList);
-    item.appendChild(createSearchLabel());
-    item.appendChild(links);
-
-    updateSummaryItemAvailability(item, availabilityLine.querySelector("dd"), book);
-
-    return item;
-  }
-
-  /**
-   * Resolve and update the summary item's availability text.
-   */
-  async function updateSummaryItemAvailability(item, node, book) {
-    if (!node) return;
-
-    node.textContent = LIBRARY_STATUS.CHECKING;
-
-    const result = await fetchLibraryAvailability(book);
-
-    setAvailabilityContent(node, result);
-    item.setAttribute("aria-busy", "false");
-  }
-
-  /**
-   * Render the extracted books summary panel below the top toolbar.
-   *
-   * This panel shows all detected books on the page in a compact list view.
-   */
-  function renderSummaryPanel() {
-    /**
-     * Remove any existing panel before re-rendering.
-     * Suppress announcement so we do not announce "hidden" and "shown" back-to-back.
-     */
-    removeSummaryPanel({ announce: false });
-
-    const toolbar = document.querySelector(`.${CLASSES.toolbar}`);
-    if (!toolbar) return;
-
-    const books = getAllBooks();
-
-    const panel = document.createElement("section");
-    panel.className = CLASSES.summaryPanel;
-    panel.setAttribute("role", "region");
-    panel.setAttribute("aria-labelledby", IDS.summaryTitle);
-
-    const header = document.createElement("div");
-    header.className = CLASSES.summaryHeader;
-
-    const title = document.createElement("h2");
-    title.className = CLASSES.summaryTitle;
-    title.id = IDS.summaryTitle;
-    title.textContent = `Library Book List (${books.length})`;
-
-    const closeButton = document.createElement("button");
-    closeButton.type = "button";
-    closeButton.className = CLASSES.summaryClose;
-    closeButton.textContent = "Hide extracted books";
-    closeButton.setAttribute("aria-label", "Hide extracted books list");
-    closeButton.addEventListener("click", () => removeSummaryPanel());
-
-    header.appendChild(title);
-    header.appendChild(closeButton);
-    panel.appendChild(header);
-
-    if (!books.length) {
-      const empty = document.createElement("p");
-      empty.className = CLASSES.summaryEmpty;
-      empty.textContent = "No books were detected on this page.";
-      panel.appendChild(empty);
-      toolbar.insertAdjacentElement("afterend", panel);
-      announceMessage("No extracted books were detected on this page.");
-      return;
-    }
-
-    /**
-     * Use an ordered list because we explicitly number the books.
-     */
-    const list = document.createElement("ol");
-    list.className = CLASSES.summaryList;
-
-    books.forEach((book, index) => {
-      list.appendChild(createSummaryItem(book, index));
-    });
-
-    panel.appendChild(list);
-    toolbar.insertAdjacentElement("afterend", panel);
-
-    announceMessage(`Extracted books list shown. ${books.length} books found.`);
-  }
-
-  /**
-   * Open a set of URLs in new tabs with a small delay between each.
-   *
-   * Why the delay exists:
-   * - reduces the chance of browser popup blocking
-   * - avoids opening many tabs simultaneously
-   */
-  function openUrls(urls) {
-    urls.forEach((url, index) => {
-      setTimeout(() => {
-        window.open(url, "_blank", "noopener,noreferrer");
-      }, index * 250);
-    });
   }
 
   /**
@@ -1052,6 +961,198 @@
     mainContainer.insertAdjacentElement("afterbegin", toolbar);
   }
 
+  // ---------------------------------------------------------------------------
+  // Summary panel
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Remove the extracted books summary panel, if it exists.
+   *
+   * The announce option exists so we can avoid duplicate announcements when
+   * re-rendering the panel internally.
+   */
+  function removeSummaryPanel({ announce = true } = {}) {
+    const panel = document.querySelector(`.${CLASSES.summaryPanel}`);
+    if (panel) {
+      panel.remove();
+      if (announce) {
+        announceMessage("Extracted books list hidden.");
+      }
+    }
+  }
+
+  /**
+   * Create one item in the extracted books summary list.
+   *
+   * Accessibility:
+   * - uses <li> inside an ordered list
+   * - uses <h3> heading for item title
+   * - uses <dl> for metadata
+   * - uses aria-busy while async availability loads
+   */
+  function createSummaryItem(book, index) {
+    const item = document.createElement("li");
+    item.className = CLASSES.summaryItem;
+    item.setAttribute("aria-busy", "true");
+
+    const itemTitle = document.createElement("h3");
+    itemTitle.className = CLASSES.summaryItemTitle;
+    itemTitle.textContent = `${index + 1}. ${book.title}`;
+
+    const metaList = createMetaList();
+    metaList.classList.add(CLASSES.summaryItemMeta);
+
+    metaList.appendChild(createMetaLine("Author", book.author || "Not found"));
+    metaList.appendChild(createMetaLine("Edition", book.edition || "Not found"));
+    metaList.appendChild(createMetaLine("Publisher", book.publisher || "Not found"));
+    metaList.appendChild(createMetaLine("ISBN", book.isbn || "Not found"));
+
+    const availabilityLine = createMetaLine(
+      "Library Availability",
+      LIBRARY_STATUS.CHECKING,
+      `${CLASSES.availabilityValue} ${CLASSES.availabilityBlock}`,
+      { live: true }
+    );
+
+    const availabilityLabel = availabilityLine.querySelector("dt");
+    if (availabilityLabel) {
+      availabilityLabel.classList.add(CLASSES.availabilityLabel);
+    }
+
+    const availabilityValueNode = availabilityLine.querySelector("dd");
+    if (availabilityValueNode) {
+      availabilityValueNode.classList.add(CLASSES.availabilityText);
+    }
+
+    metaList.appendChild(availabilityLine);
+
+    const links = document.createElement("div");
+    links.className = CLASSES.summaryLinks;
+    links.setAttribute("aria-label", `Search links for ${book.title}`);
+
+    if (book.title || book.author) {
+      links.appendChild(
+        createLink(
+          "General Search",
+          buildGeneralUrl(book.title, book.author),
+          CLASSES.summaryLink
+        )
+      );
+    }
+
+    item.appendChild(itemTitle);
+    item.appendChild(metaList);
+    item.appendChild(createSearchLabel());
+    item.appendChild(links);
+
+    updateSummaryItemAvailability(item, availabilityLine.querySelector("dd"), book);
+
+    return item;
+  }
+
+  /**
+   * Resolve and update the summary item's availability text.
+   */
+  async function updateSummaryItemAvailability(item, node, book) {
+    if (!node) return;
+
+    node.textContent = LIBRARY_STATUS.CHECKING;
+
+    const result = await fetchLibraryAvailability(book);
+    setAvailabilityContent(node, result);
+    item.setAttribute("aria-busy", "false");
+  }
+
+  /**
+   * Render the extracted books summary panel below the top toolbar.
+   *
+   * This panel shows all detected books on the page in a compact list view.
+   */
+  function renderSummaryPanel() {
+    /**
+     * Remove any existing panel before re-rendering.
+     * Suppress announcement so we do not announce "hidden" and "shown" back-to-back.
+     */
+    removeSummaryPanel({ announce: false });
+
+    const toolbar = document.querySelector(`.${CLASSES.toolbar}`);
+    if (!toolbar) return;
+
+    const books = getAllBooks();
+
+    const panel = document.createElement("section");
+    panel.className = CLASSES.summaryPanel;
+    panel.setAttribute("role", "region");
+    panel.setAttribute("aria-labelledby", IDS.summaryTitle);
+
+    const header = document.createElement("div");
+    header.className = CLASSES.summaryHeader;
+
+    const titleEl = document.createElement("h2");
+    titleEl.className = CLASSES.summaryTitle;
+    titleEl.id = IDS.summaryTitle;
+    titleEl.textContent = `Library Book List (${books.length})`;
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = CLASSES.summaryClose;
+    closeButton.textContent = "Hide extracted books";
+    closeButton.setAttribute("aria-label", "Hide extracted books list");
+    closeButton.addEventListener("click", () => removeSummaryPanel());
+
+    header.appendChild(titleEl);
+    header.appendChild(closeButton);
+    panel.appendChild(header);
+
+    if (!books.length) {
+      const empty = document.createElement("p");
+      empty.className = CLASSES.summaryEmpty;
+      empty.textContent = "No books were detected on this page.";
+      panel.appendChild(empty);
+      toolbar.insertAdjacentElement("afterend", panel);
+      announceMessage("No extracted books were detected on this page.");
+      return;
+    }
+
+    /**
+     * Use an ordered list because we explicitly number the books.
+     */
+    const list = document.createElement("ol");
+    list.className = CLASSES.summaryList;
+
+    books.forEach((book, index) => {
+      list.appendChild(createSummaryItem(book, index));
+    });
+
+    panel.appendChild(list);
+    toolbar.insertAdjacentElement("afterend", panel);
+
+    announceMessage(`Extracted books list shown. ${books.length} books found.`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Bulk URL opening
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Open a set of URLs in new tabs with a small delay between each.
+   *
+   * Why the delay exists:
+   * - reduces the chance of browser popup blocking
+   * - avoids opening many tabs simultaneously
+   */
+  function openUrls(urls) {
+    urls.forEach((url, index) => {
+      setTimeout(() => {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }, index * 250);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Page processing
+  // ---------------------------------------------------------------------------
+
   /**
    * Main processing function.
    *
@@ -1061,6 +1162,10 @@
    * - inject per-book library panels
    * - ensure the top toolbar exists
    * - ensure the global live region exists
+   *
+   * Books with an ISBN use the precise ISBN SRU lookup path.
+   * Books without an ISBN but with a title and author use the
+   * title/author SRU fallback path via fetchLibraryAvailability().
    */
   function processPage() {
     const unprocessedBookBlocks = getBookBlocks({ skipProcessed: true });
@@ -1071,7 +1176,10 @@
       const book = extractBookData(block);
       debugLog(`Book ${index + 1}:`, book);
 
-      if (book.title && book.isbn) {
+      // Previously required both title and ISBN. Now title + author is also
+      // accepted so the title/author fallback SRU path can serve books that
+      // do not expose a usable ISBN on the bookstore page.
+      if (book.title && (book.isbn || book.author)) {
         injectBookPanel(block, book);
       }
     });
@@ -1079,6 +1187,10 @@
     injectToolbar();
     ensureGlobalLiveRegion();
   }
+
+  // ---------------------------------------------------------------------------
+  // MutationObserver and initialization
+  // ---------------------------------------------------------------------------
 
   /**
    * Debounce timer used when the page DOM changes rapidly.
@@ -1095,7 +1207,6 @@
     if (processTimer) {
       clearTimeout(processTimer);
     }
-
     processTimer = setTimeout(processPage, 300);
   }
 
@@ -1116,6 +1227,12 @@
    * a few delayed passes to catch late-rendered content.
    */
   function init() {
+    if (SearchIntelligence) {
+      debugLog("searchIntelligence.js is loaded — title/author SRU fallback is enabled.");
+    } else {
+      debugLog("searchIntelligence.js is not loaded — title/author fallback will use simple CQL.");
+    }
+
     processPage();
 
     observer.observe(document.body, {

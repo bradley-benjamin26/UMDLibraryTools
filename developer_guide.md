@@ -1,262 +1,490 @@
-# UMCP Library Checker — Updated Developer Guide
+# UMCP Library Checker — Developer Guide
 
 ## Overview
 
-This browser extension enhances multiple web experiences by adding University of Maryland library catalog discovery directly into pages that users are already viewing.
+This project is a Chrome extension that adds lightweight library access and discovery actions directly into the browsing experience. The active design is a scholarly-page toolbar that appears only when the site looks like an academic or paywalled resource, giving users a small set of fast actions rather than a large embedded library interface.
 
-The extension now supports three separate integration surfaces:
+The current codebase has two layers:
 
-1. **B&N Bookstore course materials pages**
-2. **Google Search and Google Scholar results pages**
-3. **Amazon search results and Amazon product pages**
+1. the active toolbar and proxy workflow in `proxyButton.js`
+2. older page-specific helper logic in `content.js`, `googleSearch.js`, `amazonSearch.js`, and `searchIntelligence.js`
 
-Each feature is implemented as a separate content-script experience so the logic stays maintainable and page-specific behavior does not get tangled together.
+The extension is intentionally centered on a narrow set of tasks:
 
-At a high level, the extension:
-
-- detects the current supported page type
-- extracts the best available search context from the page
-- sends catalog lookups to Alma SRU
-- parses returned MARCXML records
-- detects print and online availability using Alma availability fields
-- injects accessible, page-local UI that lets the user review catalog matches
-- updates itself when dynamic page changes occur
+- proxy the current page through the UMD access path
+- search UMD Discover from the current page
+- open a research-help destination quickly
+- provide a site-level opt-out when the toolbar is not useful
 
 ---
 
-## Current project files
+## Execution model
 
-### `content.js`
+### Content-script entry points
 
-Main bookstore integration logic.
+The extension is registered in `manifest.json` and uses content scripts for page injection.
 
-Responsibilities:
+Important runtime behavior:
 
-- detect bookstore book blocks
-- extract title, author, edition, publisher, and ISBN
-- inject per-book library search panels
-- inject the top-of-page toolbar
-- run ISBN-based Alma SRU availability checks
-- update async availability state
-- react to dynamic page rerenders
+- `proxyButton.js` runs on broad URL matches, so it can evaluate nearly any page and decide whether to inject the toolbar
+- the legacy helper scripts run on specific site patterns such as Google, Amazon, and BNCollege
+- the popup is not a content script; it is a browser action with a popup UI
 
-### `content.css`
+### Initialization flow
 
-Styles used by the bookstore feature.
+On a target page, the main script flow is roughly:
 
-Responsibilities:
+1. page loads and the content script executes
+2. `proxyButton.js` reads `window.location` and `document` state
+3. it checks host exclusions and page-level heuristics
+4. it decides whether the page is scholarly enough to support a toolbar
+5. if the page qualifies, it injects the toolbar and styles
+6. the toolbar binds click handlers to proxy, search, help, and hide actions
+7. the popup logic independently handles current-tab proxying when the user uses the browser action
 
-- top toolbar layout
-- inline panel styling
-- metadata list styling
-- button and link styling
-- focus styles
-- responsive behavior
-- screen-reader-only utility classes
+This means the page-injection logic and the popup logic are separate but complementary entry points.
 
-### `googleSearch.js`
+---
 
-Google Search and Google Scholar integration logic.
-
-Responsibilities:
-
-- detect standard Google Search pages and Google Scholar pages
-- extract the search query from the page URL
-- decide whether the query is likely useful as a catalog lookup
-- run a small sequence of SRU searches from most precise to broadest
-- parse up to the top 5 catalog results
-- detect both print and online availability
-- inject an accessible panel into the Google or Scholar results page
-- support hide/show behavior without removing the panel
-- re-run cleanly when Google dynamically updates the results page
-
-### `googleSearch.css`
-
-Styles used by the Google / Google Scholar feature.
-
-Responsibilities:
-
-- UMD-themed panel shell
-- result card styling
-- availability badges
-- metadata layout
-- action button styling
-- stable visited-link behavior
-- hide/show body behavior
-- responsive layout
-
-### `amazonSearch.js`
-
-Amazon integration logic.
-
-Responsibilities:
-
-- detect Amazon search result pages and product pages
-- extract the strongest available metadata from the page
-- prefer ISBN when available
-- fall back to title and author when ISBN is unavailable
-- run a short SRU search sequence
-- parse up to the top 5 catalog results
-- detect both print and online availability
-- inject an accessible panel into the Amazon page
-- support hide/show behavior without removing the panel
-- re-run when Amazon updates page content dynamically
-
-### `amazonSearch.css`
-
-Styles used by the Amazon feature.
-
-Responsibilities:
-
-- UMD-themed panel shell
-- result card styling
-- badge styling
-- action control styling
-- visited-link overrides
-- responsive layout
-- hide/show body behavior
+## File-by-file map
 
 ### `manifest.json`
 
-The Chrome extension manifest.
+The extension manifest is the runtime source of truth.
+
+It governs:
+
+- extension metadata
+- permission scope
+- content script registration
+- host permissions for external library-related endpoints
+- browser action configuration
+
+This file matters because some behaviors depend on content scripts matching page patterns and on browser permissions allowing access to the correct host contexts.
+
+### `proxyButton.js`
+
+This is the most important file in the current implementation.
+
+It contains the main logic for:
+
+- toolbar creation
+- detection of likely scholarly pages
+- host exclusions and skip logic
+- proxy URL generation
+- search-panel behavior
+- research-help link creation
+- toolbar CSS injection
+- keyboard-focus handling
+- `localStorage` persistence for site opt-outs
+
+Important constants:
+
+- `PROXY_BASE_URL`
+- `CONTAINER_ID`
+- `SKIP_STORAGE_KEY`
+- `TOOLBAR_CONFIG`
+- `BUTTON_THEMES`
+- `TOOLBAR_STYLES`
+
+The main decision function is `isLikelyScholarlyPage()`. It evaluates:
+
+- hostname exclusions
+- URL path hints
+- paywall-like signals in page text
+- metadata tags such as citation titles and DOI references
+
+If the function returns `true`, the toolbar is injected. Otherwise, the script exits without adding UI.
+
+### `popup.js`
+
+This file handles the browser action popup.
 
 Responsibilities:
 
-- defines extension metadata
-- declares content scripts and CSS files
-- defines site match patterns
-- declares host permissions
-- determines where the extension can execute network requests
+- query the active tab
+- validate that the tab exposes a usable URL
+- render status messages in the popup
+- open the page through the UMD proxy when clicked
 
-This file is especially important because Alma SRU requests target a host that is different from Google, Amazon, or the bookstore.
+The popup is intentionally simple and lightweight. It is not a general search UI; it mainly acts as a proxy shortcut.
 
-Example required permission:
+### `popup.html`
 
-```json
-"host_permissions": [
-  "https://usmai-umcp.alma.exlibrisgroup.com/*"
-]
+This file renders popup content and accessibility hooks.
+
+Important details:
+
+- status text uses a live region for screen readers
+- the main action button has an explicit aria label
+- the popup structure is intentionally minimal to reduce complexity and improve maintainability
+
+### `content.js`
+
+This is an older helper layer for bookstore-style flows.
+
+It is designed to:
+
+- detect item blocks in supported bookstore pages
+- extract structured metadata such as ISBN, title, and author
+- inject result panels for likely library matches
+- perform catalog lookups when the context is precise enough
+
+This file is useful as an example of how page-specific extraction logic is done, but it is not the primary user path in the current version.
+
+### `googleSearch.js`
+
+This file supports older Google Search and Google Scholar discovery patterns.
+
+It is responsible for:
+
+- identifying Google or Scholar result pages
+- reading the incoming query from the URL
+- cleaning/inferencing search intent
+- trying a sequence of library lookups when the query is likely relevant
+- injecting catalog result panels into search results
+
+This file depends on query heuristics and careful filtering because raw search queries are often noisy.
+
+### `amazonSearch.js`
+
+This file supports Amazon product/search flows.
+
+It uses a hybrid strategy:
+
+- prefer ISBN when it is reliably available from the page
+- fall back to title/author logic when ISBN is not visible
+- use search query logic when the page is a search-result page rather than a product page
+
+This is a good example of a page that can provide either strong structured metadata or weak query-only metadata.
+
+### `searchIntelligence.js`
+
+This file centralizes the logic for query cleanup and intent detection.
+
+It handles:
+
+- normalization of raw search strings
+- stripping scaffolding phrases like “I’m looking for”
+- removing noisy search operators and irrelevant token patterns
+- deciding whether a query is likely to be a catalog search or a general web query
+- returning a cleaned query for downstream catalog lookup logic
+
+This file is a small but important layer that prevents the extension from making low-quality catalog searches on noisy pages.
+
+### CSS files
+
+- `content.css`
+- `googleSearch.css`
+- `amazonSearch.css`
+
+These files style the older page-specific helper panels. The floating toolbar in `proxyButton.js` also injects its own CSS block, which keeps the toolbar styling in the same file as its logic and reduces the number of separate stylesheets to manage.
+
+---
+
+## Main logic in `proxyButton.js`
+
+The developer working on the main feature should begin here.
+
+### Constants and configuration
+
+The file defines the following major configuration groups:
+
+- `PROXY_BASE_URL`: proxy target prefix for institutionally proxied pages
+- `SKIP_STORAGE_KEY`: browser-storage key for hidden hosts
+- `TOOLBAR_CONFIG`: page detection rules and exclusion values
+- `BUTTON_THEMES`: CSS class names for toolbar button variants
+- `TOOLBAR_STYLES`: injected CSS used by the toolbar
+
+These are centralized so future tuning does not require scattered hard-coded values.
+
+### Host exclusion logic
+
+The code uses `ignoredHostnames` and `excludedHostPatterns` to prevent the toolbar from showing on domains where it would be redundant or unhelpful.
+
+Examples include:
+
+- Google
+- Amazon
+- social media hosts
+- library and university hosts
+- catalog surfaces already managed by the library
+
+This is important because the toolbar is intended to be a focused helper, not a persistent banner on content that already has strong library context.
+
+### Semantic page detection
+
+The toolbar uses a combination of:
+
+- host-level heuristics
+- URL patterns such as `/doi/`, `/journal/`, and `/abstract/`
+- paywall-like text signals
+- citation metadata elements in the page
+
+This reduces false positives while still catching the kinds of pages a researcher is likely to need support on.
+
+### Build and injection flow
+
+The flow can be thought of as:
+
+1. check current page against skip logic
+2. if not skipped, check scholarly heuristics
+3. if page qualifies, inject toolbar styles
+4. create action buttons for proxy, Discover, and help
+5. render a form for Discover search when selected
+6. bind click and submit behavior
+7. ensure focus and accessibility semantics are present
+
+This is the central user interaction path in the project.
+
+---
+
+## Storage and state handling
+
+The site opt-out behavior is implemented through browser storage.
+
+Relevant behavior:
+
+- `readSkippedHosts()` reads the saved host list
+- `writeSkippedHosts()` writes the updated host list
+- `shouldSkipToolbarForCurrentPage()` checks whether the current host should be silenced
+
+This is intentionally simple and should stay that way unless the project grows into a full user-settings model.
+
+---
+
+## Proxy and search actions
+
+### Proxy action
+
+The proxy action builds a proxied URL using the current page location:
+
+```js
+const proxiedUrl = `${PROXY_BASE_URL}${encodeURIComponent(currentUrl)}`;
 ```
 
-Without that permission, SRU requests may fail even if the page logic is otherwise correct.
+This is an explicit string-building pattern, not a dynamic rewrite system. It is straightforward and easy to debug.
+
+### Discover action
+
+The Discover action toggles a search form and then submits the user’s query to the UMD Discover URL.
+
+This is a simple form-based interaction and should stay lightweight unless the project adds richer search UX.
+
+### Research-help action
+
+The help button opens the LibAnswers URL directly.
+
+This is intentionally not built around complex query processing. It serves as a direct support path.
 
 ---
 
-## Supported experiences
+## Accessibility implementation notes
 
-## 1. Bookstore feature
+The toolbar and popup were updated to include clearer keyboard and semantic behavior.
 
-The original bookstore feature is item-driven.
+Notable patterns:
 
-The script starts from known books already listed on the course materials page. Because those records typically expose ISBNs, the feature can perform highly precise SRU lookups.
+- `:focus-visible` styling
+- explicit labels for interactive controls
+- `aria-live` areas for status updates
+- button semantics for actions rather than generic clickable divs
+- a predictable keyboard path for the toolbar
 
-### Bookstore workflow
-
-When a supported bookstore page loads:
-
-1. `content.js` runs
-2. it scans the page for visible, valid book blocks
-3. it extracts title, author, edition, publisher, and ISBN
-4. it injects a library panel below each book
-5. it injects a top-level toolbar at the top of the page
-6. it sends ISBN-based SRU requests
-7. it parses XML responses
-8. it updates the UI with availability results
-9. it watches for later page rerenders and reprocesses as needed
-
-### Why ISBN is used
-
-For the bookstore experience, ISBN is the most reliable lookup key because it is:
-
-- more precise than title/author
-- less affected by punctuation differences
-- less affected by subtitles and edition wording
-- ideal for cache keys
+When modifying the UI, keep these constraints in mind. Accessibility is tied directly to how the toolbar behaves in a live browser context.
 
 ---
 
-## 2. Google Search and Google Scholar feature
+## Local testing and validation
 
-The Google feature is query-driven rather than item-driven.
+### Quick validation commands
 
-Unlike the bookstore page, Google and Google Scholar do not provide a structured book record up front. Instead, the feature must interpret a freeform user query and transform it into one or more SRU searches.
+Use this command from the project root:
 
-### Google workflow
+```bash
+cd '/Users/bbradle1/Documents/projects/TopTextbookExtension' && node --check proxyButton.js && node --check popup.js && python3 -m json.tool manifest.json >/dev/null && echo 'validation OK'
+```
 
-When a supported Google Search or Google Scholar page loads:
+This checks:
 
-1. `googleSearch.js` detects the page type
-2. it reads the query from the `q` URL parameter
-3. it sanitizes and normalizes the query
-4. it decides whether the query looks likely to help as a catalog search
-5. it builds a short sequence of SRU queries from narrowest to broadest
-6. it stops when it gets useful results
-7. it renders up to 5 results in an injected panel
-8. it shows print and online availability where present
-9. it supports hiding and re-showing the results body
-10. it re-runs when Google or Scholar updates the page dynamically
+- `proxyButton.js` parses without syntax errors
+- `popup.js` parses without syntax errors
+- `manifest.json` is valid JSON
 
-### Google vs Google Scholar support
+### Manual browser checks
 
-A separate file is not required.
+After loading the extension, verify:
 
-`googleSearch.js` supports both page types because they share:
-
-- the same SRU lookup path
-- the same result rendering structure
-- the same visual design
-- the same availability parsing rules
-
-The differences are mostly:
-
-- page detection
-- DOM mount point selection
-- labeling of the source page in the UI
-
-### Why query heuristics are needed
-
-Google queries are often noisy. Some are clearly catalog-like, while others are not.
-
-Examples likely to work well:
-
-- `beloved toni morrison`
-- `introduction to algorithms cormen`
-- quoted article titles in Google Scholar
-
-Examples that are less useful:
-
-- `best laptop for college`
-- `weather tomorrow`
-- `how to fix dishwasher leaking`
-
-The script uses heuristics and token filtering to reduce obviously irrelevant catalog lookups.
+1. toolbar appears on a likely scholarly page
+2. toolbar does not appear on excluded or clearly unrelated hosts
+3. proxy action opens the page via the UMD proxy
+4. Discover form expands correctly and submits to the correct URL
+5. help link opens LibAnswers
+6. site opt-out works
+7. toolbar is keyboard accessible and visible when focused
 
 ---
 
-## 3. Amazon feature
+## High-risk change areas
 
-The Amazon feature is a hybrid of item-driven and query-driven behavior.
+These are the places most likely to break behavior if the project is extended:
 
-On product pages, the script can often extract structured metadata such as title, author, and ISBN. On search pages, it may only have the user’s Amazon query.
+1. `proxyButton.js` detection heuristics
+2. `SKIP_STORAGE_KEY` handling and `localStorage` access
+3. `manifest.json` content-script patterns
+4. Google/Amazon-specific selectors in legacy helper files
+5. query-cleaning logic in `searchIntelligence.js`
 
-### Amazon workflow
+If an issue appears on a real-world page, the first place to inspect is nearly always the page-detection logic in `proxyButton.js`.
 
-When a supported Amazon page loads:
+---
 
-1. `amazonSearch.js` detects whether it is a search page or product page
-2. it extracts the strongest available metadata
-3. it prefers ISBN over title/author when possible
-4. it generates one or more SRU queries from strongest to broadest
-5. it renders up to 5 results in an injected panel
-6. it displays both print and online availability when present
-7. it supports hide/show of the panel body
-8. it re-runs when Amazon dynamically changes the page
+## Design boundaries and intended scope
 
-### Why ISBN-first matters on Amazon
+This project should remain a focused helper rather than a generalized portal.
 
-Amazon product pages can expose different levels of metadata quality.
+It is intentionally designed to:
 
-ISBN, when present, remains the strongest match key. Title and author fallback logic exists because not every page exposes a reliable ISBN in the visible DOM.
+- be useful at the moment of need
+- minimize clutter on ordinary pages
+- avoid claiming authority over unrelated page content
+- support library workflows without becoming a large page-rewrite engine
+
+This scope is important for maintainability. If future features expand, they should be added deliberately and grouped into separate modules rather than mixed into the primary toolbar logic.
+
+---
+
+## Maintenance guidance
+
+When making future changes, follow this priority order:
+
+1. confirm the issue in the active user flow
+2. inspect `proxyButton.js` first if it is a page-visibility or toolbar issue
+3. inspect `manifest.json` if the content script is not running
+4. inspect `popup.js` if the browser action is failing
+5. inspect `searchIntelligence.js` if mismatched queries or false positives appear
+6. inspect legacy helper files only when the issue occurs on a known page type such as Google, Amazon, or BNCollege
+
+This order reduces debugging time and keeps the architecture understandable.
+
+---
+
+## Summary for future developers
+
+If you are coming into this project new, the central mental model is:
+
+- page detection lives in `proxyButton.js`
+- popup logic lives in `popup.js`
+- manifest registration drives where the code runs
+- legacy helper scripts remain for site-specific catalog lookup behavior
+- `searchIntelligence.js` is the query-cleaning layer for unreliable search contexts
+
+The current project is intentionally compact, but it is not trivial. The main behaviors are concentrated in a small number of files, so a future developer can understand most of the system by reading those files in order.
+
+---
+
+## License note
+
+The repository does not currently define a formal license. If this extension is intended for internal UMD use only, add an internal-use or distribution statement before it is shared more widely.
+
+---
+
+## Debugging guide
+
+This section is intended as a practical checklist for debugging runtime issues in the live extension.
+
+### 1. Start with the page-detection layer
+
+If the toolbar does not appear when expected, the first place to inspect is `proxyButton.js`.
+
+Check:
+
+- `isLikelyScholarlyPage()`
+- URL path hints
+- host exclusions
+- `readSkippedHosts()` / `shouldSkipToolbarForCurrentPage()`
+- the page text used to detect paywall or academic signals
+
+Most false negatives and false positives come from one of these heuristics being too strict or too broad.
+
+### 2. Confirm manifest registration
+
+If a content script is not firing at all, inspect `manifest.json` before touching the page logic.
+
+Check:
+
+- `matches` patterns
+- script order
+- CSS attachment
+- the `run_at` timing
+- host permissions
+
+A missing match pattern or a too-narrow permission set can make the feature appear broken even when the JavaScript is valid.
+
+### 3. Confirm content-script execution in the browser
+
+Use Chrome DevTools on the target page and look for:
+
+- console errors
+- injected elements with the expected IDs or classes
+- whether the toolbar was added at all
+- whether the script exited early because of a detection decision
+
+Useful debugging patterns:
+
+- inspect `document.body.innerText` on the target page
+- confirm the page includes expected metadata tags such as citation fields
+- compare the current hostname to the host exclusion list
+
+### 4. Inspect state and persistent toggles
+
+If the toolbar disappears on one site and reappears later, inspect the stored skip-host list.
+
+Relevant code:
+
+- `readSkippedHosts()`
+- `writeSkippedHosts()`
+- `shouldSkipToolbarForCurrentPage()`
+
+This is a common cause of user confusion because the behavior can appear inconsistent when the host list is stale or when the same domain is visited under a different hostname form.
+
+### 5. Validate the popup flow separately from page injection
+
+The popup and the in-page toolbar are separate code paths.
+
+If the popup fails but the toolbar works, inspect:
+
+- `popup.js`
+- `popup.html`
+- Chrome tab API access
+- whether the active tab exposes a valid URL
+
+If the toolbar works but the popup does not, the issue is likely in the popup’s tab detection or URL validation logic rather than the page-injection detection logic.
+
+### 6. Debug legacy helper pages separately
+
+The Google, Amazon, and bookstore helper flows are not the current primary interface, but they still have site-specific logic.
+
+When debugging those pages:
+
+- inspect the exact page pattern being matched
+- verify the metadata extraction is producing the expected title or ISBN
+- check the query-cleaning logic in `searchIntelligence.js`
+- confirm the panel is mounted in the correct DOM location for that site
+
+These pages are more sensitive to layout changes because they rely on selectors and page structure.
+
+### 7. Use a narrow hypothesis-first approach
+
+When a bug appears, work in this order:
+
+1. confirm whether the content script runs at all
+2. confirm whether the page passes the detection heuristic
+3. confirm whether the injected UI is created
+4. confirm whether the click handler or form handler fires
+5. confirm whether the browser API call or URL generation is correct
+
+This sequence is the fastest way to isolate whether the issue is in detection, rendering, or browser interaction.
 
 ---
 

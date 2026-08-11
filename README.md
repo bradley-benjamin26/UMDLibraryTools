@@ -1,326 +1,252 @@
 # UMCP Library Checker
 
-UMCP Library Checker is a Chrome browser extension that adds University of Maryland library catalog lookup tools directly into websites people are already using.
+UMCP Library Checker is a Chrome extension designed to support library access and discovery workflows in context while users browse scholarly or paywalled content. The extension is intended to reduce the number of steps between a user reading a resource and obtaining access to a legitimate library path to that resource.
 
-The extension currently supports three separate experiences:
-
-1. **B&N Bookstore course materials pages**
-2. **Google Search and Google Scholar results pages**
-3. **Amazon search results and Amazon product pages**
-
-Across those surfaces, the extension helps users quickly discover whether an item is available through the UMD library catalog, including both print and online availability when Alma SRU returns that information.
+The current implementation emphasizes a lightweight, in-page library helper rather than a textbook-specific interface. It injects a floating toolbar on likely scholarly pages and provides a simple proxy action from the browser popup when the user is on a page that needs institutional access.
 
 ---
 
-## What the extension does
+## Purpose and user value
 
-### Bookstore integration
+The extension supports three primary user actions:
 
-On supported B&N bookstore course materials pages, the extension:
+1. Proxy a page through the UMD access pathway.
+2. Search UMD Discover from the current page without opening a separate browser tab.
+3. Reach research-help support quickly through UMD Library Answers.
 
-- detects visible textbook or course-material entries
-- extracts metadata such as title, author, edition, publisher, and ISBN
-- injects a per-book library search panel
-- adds a top-of-page library toolbar
-- performs ISBN-based Alma SRU lookups
-- reports availability in the page UI
-
-This is the most precise workflow because bookstore pages often expose ISBNs directly.
-
-### Google Search and Google Scholar integration
-
-On supported Google Search and Google Scholar pages, the extension:
-
-- reads the current search query from the URL
-- applies light query heuristics to avoid obviously irrelevant searches
-- runs a short sequence of Alma SRU searches from narrowest to broadest
-- displays up to the top 5 catalog matches
-- reports print availability from `AVA`
-- reports online availability from `AVE`
-- injects an accessible library results panel near the top of the page
-
-### Amazon integration
-
-On supported Amazon pages, the extension:
-
-- detects Amazon search-result and product-detail pages
-- extracts the strongest metadata available from the page
-- prefers ISBN when present
-- falls back to title and author search when needed
-- displays up to the top 5 catalog matches
-- reports both print and online availability
-- injects an accessible library results panel into the page
+This is especially useful when a user encounters a journal article, paywalled resource, or academic landing page and needs a fast path to library support or access.
 
 ---
 
-## Core technical approach
+## Functional overview
 
-The extension uses **Alma SRU** for catalog search and availability lookup.
+### In-page scholarly toolbar
 
-Key patterns used across the project:
+The main user-facing feature is a floating toolbar injected into likely scholarly pages. It includes:
 
-- **ISBN-first lookups** when reliable ISBNs are available
-- **query-driven SRU searching** for Google and Amazon when structured metadata is incomplete
-- **MARCXML parsing** to extract bibliographic and availability data
-- **`AVA` fields** for print availability
-- **`AVE` fields** for online availability
-- **client-side UI injection** through content scripts
-- **MutationObserver-based rerender handling** for dynamic pages
-- **accessibility-first component design**
+- a proxy action for the current page
+- an inline search form for UMD Discover
+- a direct link to UMD LibAnswers
+- a per-site opt-out so a user can disable the toolbar on a host they do not want it on
 
----
+The toolbar is designed to be low-friction and minimally intrusive. It prioritizes accessibility, a clear action model, and a broad but controlled set of page conditions under which it appears.
 
-## Project files
+### Popup-based proxy flow
 
-### Core bookstore files
+The browser popup exposes a current-page proxy action. When a valid page URL is available, the extension:
 
-- `content.js` — bookstore extraction, panel injection, toolbar behavior, and ISBN-based availability checks
-- `content.css` — bookstore styles
+- reads the active tab URL
+- validates the URL format
+- constructs the UMD proxy URL
+- opens the proxied page in the same tab
 
-### Google / Scholar files
+This provides a practical route for users who need access through the library proxy without leaving the current browsing session.
 
-- `googleSearch.js` — Google Search and Google Scholar integration logic
-- `googleSearch.css` — Google / Scholar panel styles
+### Search UMD Discover
 
-### Amazon files
+The toolbar includes an inline search interaction:
 
-- `amazonSearch.js` — Amazon search and product-page integration logic
-- `amazonSearch.css` — Amazon panel styles
+- user clicks the Discover action
+- the toolbar expands to an input field
+- user enters a query
+- query is submitted to UMD Discover in a new browser navigation
 
-### Configuration
+This keeps the workflow anchored in the page the user is already reading while still using the library’s discovery interface.
 
-- `manifest.json` — Chrome extension manifest
+### Research help
 
-### Documentation
+The toolbar includes a direct link to:
 
-- `README.md` — high-level project overview and setup instructions
-- `developer_guide_updated.md` — implementation details and maintenance notes
-- `manifest_addition.md` — Google / Scholar manifest example
-- `manifest_amazon_addition.md` — Amazon manifest example
+- https://umd.libanswers.com/
+
+This provides a quick path to research support without requiring users to locate the library site independently.
 
 ---
 
-## Installation for local testing
+## Legacy functionality retained in the codebase
 
-### 1. Gather the extension files
+The repository still contains earlier helper flows for:
 
-Put all extension files into a single folder, for example:
+- BNCollege course-material pages
+- Google Search and Google Scholar result pages
+- Amazon product and search-result pages
+
+These code paths are not the primary experience in the current version, but they remain useful as supplemental catalog lookup tools and as a reference for page-specific metadata extraction logic.
+
+---
+
+## File-level architecture
+
+### Primary runtime files
+
+- `proxyButton.js` — main page-injection logic; scholarly-page heuristics; toolbar rendering; proxy link generation; Discover form logic; skip-host persistence
+- `popup.js` — active-tab inspection and proxy execution from the extension popup
+- `popup.html` — popup layout and status messaging
+
+### Supporting library lookup files
+
+- `content.js` — older bookstore and page-assist logic
+- `googleSearch.js` — Google and Google Scholar helper logic
+- `amazonSearch.js` — Amazon search and product-page helper logic
+- `searchIntelligence.js` — shared query-cleaning and catalog search planning functions
+
+### Styling
+
+- `content.css` — shared page-injected styles
+- `googleSearch.css` — Google-specific styling
+- `amazonSearch.css` — Amazon-specific styling
+- `proxyButton.js` also injects toolbar styling directly for the floating scholar toolbar
+
+---
+
+## Current behavioral model
+
+The extension currently has two distinct layers:
+
+### 1. Main scholarly access layer
+
+This is the current focus of the project. It is designed to detect likely scholarly or article-like pages and then offer a small set of library actions without overwhelming the page.
+
+Relevant components:
+
+- `proxyButton.js`
+- the manifest content script entry for broad page matching
+- the skip-host storage logic
+
+### 2. Legacy lookup layer
+
+This layer is retained for catalog-oriented workflows on specific commercial or search surfaces. It provides result panels and search assistance where page structure makes item metadata easier to extract.
+
+Relevant components:
+
+- `content.js`
+- `googleSearch.js`
+- `amazonSearch.js`
+- `searchIntelligence.js`
+
+---
+
+## Technical configuration
+
+### Proxy base URL
 
 ```text
-umcp-library-checker/
-  manifest.json
-  content.js
-  content.css
-  googleSearch.js
-  googleSearch.css
-  amazonSearch.js
-  amazonSearch.css
-  README.md
+http://proxy-um.researchport.umd.edu/login?url=
 ```
 
-If you use icons, place them in the same folder or in a nested `icons/` directory and reference them in `manifest.json`.
+This is the URL format used to pass the current page through the institutional proxy path.
 
-### 2. Confirm required manifest entries
-
-Your `manifest.json` should include:
-
-- the bookstore content script entry
-- the Google / Google Scholar content script entry
-- the Amazon content script entry
-- the Alma host permission
-
-At minimum, Alma SRU access requires:
-
-```json
-"host_permissions": [
-  "https://usmai-umcp.alma.exlibrisgroup.com/*"
-]
-```
-
-### 3. Load the extension in Chrome
-
-1. Open `chrome://extensions`
-2. Turn on **Developer mode**
-3. Click **Load unpacked**
-4. Select your extension folder
-
-### 4. Test supported pages
-
-Recommended test cases:
-
-#### Bookstore
-- a B&N course materials page with visible textbooks and ISBNs
-
-#### Google Search
-- `beloved toni morrison`
-- `introduction to algorithms cormen`
-- `hamlet shakespeare`
-
-#### Google Scholar
-- a quoted article title
-- author + article title
-
-#### Amazon
-- a known book-title search
-- a title + author search
-- a product page with visible ISBN-13
-
----
-
-## Configuration notes
-
-### UMD catalog link settings
-
-For Google and Amazon catalog-result links, the current UMD catalog settings are:
-
-```js
-baseUrl: "https://usmai-umcp.primo.exlibrisgroup.com/discovery/search"
-fixedParams: {
-  vid: "01USMAI_UMCP:UMCP",
-  lang: "en"
-}
-```
-
-### UMD Alma SRU base
-
-The current SRU base used by the project is:
+### UMD Discover destination
 
 ```text
-https://usmai-umcp.alma.exlibrisgroup.com/view/sru/01USMAI_UMCP
+https://usmai-umcp.primo.exlibrisgroup.com/discovery/search
 ```
 
----
+This is the default search destination used by the toolbar’s general search action.
 
-## Accessibility features
+### Research help destination
 
-The extension is designed with accessibility in mind and uses:
+```text
+https://umd.libanswers.com/
+```
 
-- semantic headings and section structure
-- definition lists for metadata
-- keyboard-focusable controls
-- visible focus states
-- live regions for dynamic status updates
-- `aria-busy` while asynchronous data is loading
-- accessible hide/show controls for Google and Amazon result panels
-- clear labeling for links that open in a new tab where applicable
+### Storage behavior
 
-The project should continue to target **WCAG AA** standards for any new work.
+The toolbar supports a “Hide on this site” function. Selected hostnames are stored in browser storage to prevent the toolbar from appearing repeatedly on sites the user does not want it on.
 
 ---
 
-## Design principles
+## Manifest summary
 
-### Keep supported surfaces separate
+The extension uses Manifest V3 and includes:
 
-Each supported site has its own content script and stylesheet so that page-specific logic stays maintainable.
+- `activeTab` permissions for current-page inspection
+- `storage` permissions for skip-host state
+- broad match patterns for the in-page toolbar
+- content script entries for legacy site-specific helper flows
 
-### Prefer strong identifiers
-
-When ISBN is present, it is the best lookup key because it is more precise than freeform title and author text.
-
-### Fail gracefully on noisy queries
-
-Google and Amazon queries are often messy. The extension should avoid showing low-quality catalog results when the page context is not likely to correspond to a useful library search.
-
-### Avoid page-layout disruption
-
-The injected UI is designed to feel local to the page without breaking the page layout.
+The manifest in `manifest.json` is the current source of truth for runtime script registration.
 
 ---
 
-## Maintenance tips
+## Local testing workflow
 
-### If bookstore extraction stops working
+### 1. Load the extension
 
-Check:
+1. Open `chrome://extensions`.
+2. Enable Developer mode.
+3. Click “Load unpacked.”
+4. Select the project directory.
 
-- bookstore selectors in `content.js`
-- whether the page changed its structure
-- whether the book blocks still expose title, author, and ISBN
+### 2. Validate the toolbar on a scholarly page
 
-### If Google or Amazon results become poor
+Use a page that looks like a journal, article, or paywalled academic resource. Confirm that:
 
-Check:
+- the toolbar appears in the upper-right area of the page
+- the proxy action opens the page through the UMD proxy
+- the Discover action expands into the input form
+- the research-help link opens the LibAnswers page
 
-- query-cleaning heuristics
-- SRU query order
-- whether the source page still exposes the metadata the script expects
+### 3. Validate the popup flow
 
-### If availability display stops working
+Open the browser action popup and confirm:
 
-Check:
+- the active page is detected correctly
+- the proxy button is enabled when a valid URL exists
+- the page opens through the proxy when clicked
 
-- Alma SRU reachability
-- `host_permissions` in `manifest.json`
-- whether `AVA` and `AVE` fields are still present in the returned MARCXML
-- browser console logs if debug output is enabled
+### 4. Validate legacy helper flows
 
-### If duplicate or stale panels appear
+Optionally test the older helper logic on:
 
-Check:
-
-- page rerender logic
-- processed markers
-- MutationObserver scheduling / debouncing
-
----
-
-## Suggested future improvements
-
-Possible next enhancements include:
-
-- better heuristic filtering for non-library Google and Amazon searches
-- richer location and call-number display
-- optional user settings for supported sites
-- better handling of multiple matching holdings
-- improved deduplication across similar editions
-- export of extracted bookstore book lists
-- Chrome Web Store packaging and release workflow
+- BNCollege course-material pages
+- Google Search results
+- Google Scholar results
+- Amazon product pages
 
 ---
 
-## Publishing options
+## Accessibility and usability notes
 
-You can distribute the extension in one of three main ways:
+The project is designed with accessibility in mind and includes several important considerations:
 
-1. **Load unpacked** for personal use or testing
-2. **Private/internal sharing** with a small technical group
-3. **Chrome Web Store publication** for easier installation and updates
+- visible focus styles for keyboard users
+- clear action labels for buttons and form controls
+- `aria-live` announcements for dynamic status updates
+- semantically clear controls that can be used without a mouse
+- a deliberate effort to keep toolbar interactions minimal and easy to understand
 
-Before publishing, make sure:
-
-- the manifest is finalized
-- permissions are as narrow as possible
-- all supported match patterns are explicit
-- icons and version metadata are present
-- your store description clearly explains what the extension does
+These decisions support broader usability for both students and library staff who may need a fast and reliable interface.
 
 ---
 
-## License / internal use note
+## Maintenance considerations
 
-Add your preferred license or internal-use statement here.
+The most important maintenance areas are:
 
-Examples:
+- scholarly detection heuristics in `proxyButton.js`
+- host exclusion and skip-host logic
+- proxy URL construction
+- focus and keyboard behavior for the toolbar
+- manifest match patterns
+- any legacy helper logic that depends on site-specific selectors or page structure
 
-- MIT License
-- Apache 2.0
-- Internal UMD project / not for redistribution
+These are the areas most likely to require adjustment as website layouts or upstream access systems change.
 
 ---
 
-## Quick summary
+## Project status
 
-UMCP Library Checker brings library discovery into:
+This project is best understood as a library-access helper focused on three priorities:
 
-- bookstore pages
-- Google Search and Google Scholar
-- Amazon
+- proxying the current page through the UMD access path
+- enabling general discovery through UMD Discover
+- connecting users to research support quickly while they read scholarly content
 
-It does that by:
+The older bookstore, Google, and Amazon lookup code remains in the repository as supplementary functionality and may be updated independently of the current scholarly-toolbar workflow.
 
-- extracting the best available search context from each page
-- querying Alma SRU
-- parsing MARCXML
-- detecting print and online availability
-- rendering accessible, page-local catalog results for users
+---
+
+## License
+
+The repository does not currently declare a formal license. If this extension is intended for internal UMD use only, a project-specific internal-use or licensing statement should be added before broader distribution.

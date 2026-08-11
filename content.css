@@ -49,13 +49,14 @@
 }
 
 /* Focus visibility */
-.umcp-library-link:focus,
-.umcp-library-summary-link:focus,
-.umcp-library-toolbar-button:focus,
-.umcp-library-summary-close:focus,
-.umcp-library-availability-link:focus {
-  outline: 3px solid #000000;
+.umcp-library-link:focus-visible,
+.umcp-library-summary-link:focus-visible,
+.umcp-library-toolbar-button:focus-visible,
+.umcp-library-summary-close:focus-visible,
+.umcp-library-availability-link:focus-visible {
+  outline: 3px solid #003a8c;
   outline-offset: 2px;
+  box-shadow: 0 0 0 2px rgba(255, 210, 0, 0.45);
 }
 
 /* Slightly reduce default heading margins inside injected UI */
@@ -72,11 +73,12 @@
 
 .umcp-library-tools {
   margin-top: 12px;
-  padding: 12px;
-  border: 2px solid #e21833;
-  border-radius: 8px;
-  background: #ffffff;
+  padding: 16px;
+  border: 1px solid #e21833;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8f8f8 100%);
   font-family: Arial, sans-serif;
+  box-shadow: 0 2px 8px rgba(26, 26, 26, 0.06);
 }
 
 .umcp-library-tools-title {
@@ -131,11 +133,12 @@
 
 .umcp-library-toolbar {
   margin: 12px 0 16px;
-  padding: 12px;
-  border: 2px solid #e21833;
-  border-radius: 8px;
-  background: #ffffff;
+  padding: 16px;
+  border: 1px solid #e21833;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8f8f8 100%);
   font-family: Arial, sans-serif;
+  box-shadow: 0 2px 8px rgba(26, 26, 26, 0.06);
 }
 
 .umcp-library-toolbar-title {
@@ -157,6 +160,7 @@
   color: #ffffff;
   padding: 8px 10px;
   font-size: 13px;
+  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.12);
 }
 
 .umcp-library-toolbar-button:hover {
@@ -179,12 +183,12 @@
 
 .umcp-library-summary-panel {
   margin: 0 0 18px;
-  padding: 12px;
-  border: 2px solid #e21833;
-  border-radius: 8px;
-  background: #ffffff;
+  padding: 16px;
+  border: 1px solid #e21833;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8f8f8 100%);
   font-family: Arial, sans-serif;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(26, 26, 26, 0.06);
 }
 
 .umcp-library-summary-header {
@@ -229,9 +233,9 @@
 }
 
 .umcp-library-summary-item {
-  padding: 10px;
-  border: 1px solid #e21833;
-  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
   background: #ffffff;
 }
 
@@ -304,7 +308,8 @@
   padding: 10px;
   border: 2px solid #e21833;
   border-radius: 8px;
-  background: #ffd200;
+  background: #fff7cc;
+  border-color: #ffd200;
 }
 
 .umcp-library-availability-label {
