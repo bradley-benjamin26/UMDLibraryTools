@@ -443,14 +443,32 @@
 
     applyButtonTheme(helpButton, BUTTON_THEMES.help);
 
-    const skipButton = createButton("Hide toolbar on this site", () => {
-      const hostname = window.location.hostname.toLowerCase();
-      const skippedHosts = readSkippedHosts();
-      const nextHosts = skippedHosts.includes(hostname) ? skippedHosts : [...skippedHosts, hostname];
-      writeSkippedHosts(nextHosts);
-      setLiveAnnouncement(liveRegion, "Library toolbar hidden for this site.");
-      container.remove();
-    }, "umcp-library-toolbar-button");
+    const hostname = window.location.hostname.toLowerCase();
+    const isSiteCurrentlyHidden = shouldSkipToolbarForCurrentPage();
+
+    const skipButton = createButton(
+      isSiteCurrentlyHidden ? "Show toolbar on this site" : "Hide toolbar on this site",
+      () => {
+        const skippedHosts = readSkippedHosts();
+
+        if (isSiteCurrentlyHidden) {
+          const nextHosts = skippedHosts.filter((value) => {
+            const normalizedValue = String(value || "").toLowerCase();
+            return normalizedValue !== hostname && !hostname.endsWith(`.${normalizedValue}`);
+          });
+          writeSkippedHosts(nextHosts);
+          setLiveAnnouncement(liveRegion, "Library toolbar restored for this site.");
+          window.location.reload();
+          return;
+        }
+
+        const nextHosts = skippedHosts.includes(hostname) ? skippedHosts : [...skippedHosts, hostname];
+        writeSkippedHosts(nextHosts);
+        setLiveAnnouncement(liveRegion, "Library toolbar hidden for this site.");
+        container.remove();
+      },
+      "umcp-library-toolbar-button"
+    );
 
     applyButtonTheme(skipButton, BUTTON_THEMES.skip);
 
