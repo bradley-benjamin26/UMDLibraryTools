@@ -1,252 +1,144 @@
-# UMCP Library Checker
+# UMD Library Tools
 
-UMCP Library Checker is a Chrome extension designed to support library access and discovery workflows in context while users browse scholarly or paywalled content. The extension is intended to reduce the number of steps between a user reading a resource and obtaining access to a legitimate library path to that resource.
+UMD Library Tools is a Chrome extension that helps users move quickly from an article or scholarly page to the appropriate library access or discovery workflow. The extension combines a lightweight in-page toolbar with a popup-based action flow and a few legacy helper integrations that remain useful for catalog-oriented pages.
 
-The current implementation emphasizes a lightweight, in-page library helper rather than a textbook-specific interface. It injects a floating toolbar on likely scholarly pages and provides a simple proxy action from the browser popup when the user is on a page that needs institutional access.
+The current focus is on scholarly pages and paywalled journal content. The extension offers a low-friction way to:
 
----
-
-## Purpose and user value
-
-The extension supports three primary user actions:
-
-1. Proxy a page through the UMD access pathway.
-2. Search UMD Discover from the current page without opening a separate browser tab.
-3. Reach research-help support quickly through UMD Library Answers.
-
-This is especially useful when a user encounters a journal article, paywalled resource, or academic landing page and needs a fast path to library support or access.
+- open the current page through the UMD proxy path
+- search UMD Discover without leaving the page
+- quickly reach UMD research help
 
 ---
 
-## Functional overview
+## Project overview
 
-### In-page scholarly toolbar
+This project grew out of a broader set of context-sensitive library helpers and now centers on a single, simple user experience:
 
-The main user-facing feature is a floating toolbar injected into likely scholarly pages. It includes:
+1. detect when a user is on a likely scholarly page
+2. surface a small floating toolbar in the upper-right corner of the page
+3. provide an access action, a discovery action, and a help action
+4. retain the older site-specific helper flows for search and catalog pages without making them the primary experience
 
-- a proxy action for the current page
-- an inline search form for UMD Discover
-- a direct link to UMD LibAnswers
-- a per-site opt-out so a user can disable the toolbar on a host they do not want it on
-
-The toolbar is designed to be low-friction and minimally intrusive. It prioritizes accessibility, a clear action model, and a broad but controlled set of page conditions under which it appears.
-
-### Popup-based proxy flow
-
-The browser popup exposes a current-page proxy action. When a valid page URL is available, the extension:
-
-- reads the active tab URL
-- validates the URL format
-- constructs the UMD proxy URL
-- opens the proxied page in the same tab
-
-This provides a practical route for users who need access through the library proxy without leaving the current browsing session.
-
-### Search UMD Discover
-
-The toolbar includes an inline search interaction:
-
-- user clicks the Discover action
-- the toolbar expands to an input field
-- user enters a query
-- query is submitted to UMD Discover in a new browser navigation
-
-This keeps the workflow anchored in the page the user is already reading while still using the library’s discovery interface.
-
-### Research help
-
-The toolbar includes a direct link to:
-
-- https://umd.libanswers.com/
-
-This provides a quick path to research support without requiring users to locate the library site independently.
+This keeps the extension useful for a wide range of browsing contexts while keeping the main workflow focused and easy to understand.
 
 ---
 
-## Legacy functionality retained in the codebase
+## Primary features
 
-The repository still contains earlier helper flows for:
+### Direct proxy flow
 
-- BNCollege course-material pages
-- Google Search and Google Scholar result pages
-- Amazon product and search-result pages
+The extension generates a direct proxied-domain URL for the current page, matching the working proxy pattern used by the bookmarklet flow. This avoids the login-menu route and preserves the actual target page instead of sending the user to a generic proxy landing page.
 
-These code paths are not the primary experience in the current version, but they remain useful as supplemental catalog lookup tools and as a reference for page-specific metadata extraction logic.
+### In-page toolbar
+
+On likely scholarly pages, the extension injects a compact toolbar with:
+
+- a proxy button
+- a search action for UMD Discover
+- a research-help link to UMD LibAnswers
+- a hide option for pages where the toolbar is not useful
+
+### Popup flow
+
+The popup validates the active tab URL and provides a consistent proxy action from the extension action menu when the user wants a second access path.
+
+### Legacy support pages
+
+The codebase still includes helper logic for:
+
+- BNCollege pages
+- Google and Google Scholar result pages
+- Amazon pages
+
+These remain present for compatibility and to preserve older catalog-style workflows, but they are not the primary user experience.
 
 ---
 
-## File-level architecture
+## Repository structure
 
-### Primary runtime files
+### Runtime files
 
-- `proxyButton.js` — main page-injection logic; scholarly-page heuristics; toolbar rendering; proxy link generation; Discover form logic; skip-host persistence
-- `popup.js` — active-tab inspection and proxy execution from the extension popup
-- `popup.html` — popup layout and status messaging
+- `proxyButton.js` — scholarly toolbar injection, page detection, proxy generation, toolbar behavior, Discover search form, help navigation
+- `popup.js` — popup logic for active-tab URL inspection and proxy actions
+- `popup.html` — browser action popup UI
 
-### Supporting library lookup files
+### Legacy helper files
 
-- `content.js` — older bookstore and page-assist logic
-- `googleSearch.js` — Google and Google Scholar helper logic
-- `amazonSearch.js` — Amazon search and product-page helper logic
-- `searchIntelligence.js` — shared query-cleaning and catalog search planning functions
+- `content.js` — BNCollege and legacy page helper logic
+- `googleSearch.js` — Google and Google Scholar support
+- `amazonSearch.js` — Amazon support
+- `searchIntelligence.js` — shared metadata and search logic
 
 ### Styling
 
-- `content.css` — shared page-injected styles
+- `content.css` — legacy page styling
 - `googleSearch.css` — Google-specific styling
 - `amazonSearch.css` — Amazon-specific styling
-- `proxyButton.js` also injects toolbar styling directly for the floating scholar toolbar
+
+### Project metadata
+
+- `manifest.json` — extension registration and script matches
+- `README.md` — project overview and local development notes
 
 ---
 
-## Current behavioral model
+## Proxy behavior and implementation notes
 
-The extension currently has two distinct layers:
+The proxy workflow intentionally uses the direct proxied-host pattern rather than the `login?url=` route because the login-host flow can land the user on a generic proxy menu instead of the intended article page. The direct host pattern matches the working bookmarklet flow and preserves the page target more reliably.
 
-### 1. Main scholarly access layer
-
-This is the current focus of the project. It is designed to detect likely scholarly or article-like pages and then offer a small set of library actions without overwhelming the page.
-
-Relevant components:
-
-- `proxyButton.js`
-- the manifest content script entry for broad page matching
-- the skip-host storage logic
-
-### 2. Legacy lookup layer
-
-This layer is retained for catalog-oriented workflows on specific commercial or search surfaces. It provides result panels and search assistance where page structure makes item metadata easier to extract.
-
-Relevant components:
-
-- `content.js`
-- `googleSearch.js`
-- `amazonSearch.js`
-- `searchIntelligence.js`
+This is an important implementation detail because the bookmarklet is a useful reference point for the intended user experience: open the proxied publisher page directly and let the access system handle the session/auth flow.
 
 ---
 
-## Technical configuration
+## Development notes
 
-### Proxy base URL
-
-```text
-http://proxy-um.researchport.umd.edu/login?url=
-```
-
-This is the URL format used to pass the current page through the institutional proxy path.
-
-### UMD Discover destination
-
-```text
-https://usmai-umcp.primo.exlibrisgroup.com/discovery/search
-```
-
-This is the default search destination used by the toolbar’s general search action.
-
-### Research help destination
-
-```text
-https://umd.libanswers.com/
-```
-
-### Storage behavior
-
-The toolbar supports a “Hide on this site” function. Selected hostnames are stored in browser storage to prevent the toolbar from appearing repeatedly on sites the user does not want it on.
-
----
-
-## Manifest summary
-
-The extension uses Manifest V3 and includes:
-
-- `activeTab` permissions for current-page inspection
-- `storage` permissions for skip-host state
-- broad match patterns for the in-page toolbar
-- content script entries for legacy site-specific helper flows
-
-The manifest in `manifest.json` is the current source of truth for runtime script registration.
-
----
-
-## Local testing workflow
-
-### 1. Load the extension
+### Local testing
 
 1. Open `chrome://extensions`.
 2. Enable Developer mode.
-3. Click “Load unpacked.”
-4. Select the project directory.
+3. Choose “Load unpacked.”
+4. Select this project directory.
 
-### 2. Validate the toolbar on a scholarly page
+### Suggested verification flow
 
-Use a page that looks like a journal, article, or paywalled academic resource. Confirm that:
+- open a JSTOR or Project MUSE article page
+- confirm the toolbar appears in the upper-right corner
+- click the proxy button and verify the page loads through the direct proxied host
+- verify the Discover action opens the search form
+- verify the research-help button opens the LibAnswers page
+- verify the popup still opens and proxies the active page correctly
 
-- the toolbar appears in the upper-right area of the page
-- the proxy action opens the page through the UMD proxy
-- the Discover action expands into the input form
-- the research-help link opens the LibAnswers page
+### Browser compatibility
 
-### 3. Validate the popup flow
-
-Open the browser action popup and confirm:
-
-- the active page is detected correctly
-- the proxy button is enabled when a valid URL exists
-- the page opens through the proxy when clicked
-
-### 4. Validate legacy helper flows
-
-Optionally test the older helper logic on:
-
-- BNCollege course-material pages
-- Google Search results
-- Google Scholar results
-- Amazon product pages
+The extension is designed for Chromium-based browsers and is intended to be loaded as an unpacked extension during development rather than published as a broad external distribution.
 
 ---
 
-## Accessibility and usability notes
+## Accessibility notes
 
-The project is designed with accessibility in mind and includes several important considerations:
+The project includes several accessibility-oriented decisions:
 
-- visible focus styles for keyboard users
-- clear action labels for buttons and form controls
-- `aria-live` announcements for dynamic status updates
-- semantically clear controls that can be used without a mouse
-- a deliberate effort to keep toolbar interactions minimal and easy to understand
-
-These decisions support broader usability for both students and library staff who may need a fast and reliable interface.
+- explicit focus styling for keyboard navigation
+- descriptive button labels and accessible search controls
+- live-region status messaging for dynamic UI feedback
+- a minimal floating action pattern so the toolbar stays unobtrusive while remaining visible and usable
 
 ---
 
-## Maintenance considerations
+## Notes for future maintenance
 
-The most important maintenance areas are:
+The areas most likely to require ongoing updates are:
 
 - scholarly detection heuristics in `proxyButton.js`
-- host exclusion and skip-host logic
-- proxy URL construction
-- focus and keyboard behavior for the toolbar
-- manifest match patterns
-- any legacy helper logic that depends on site-specific selectors or page structure
-
-These are the areas most likely to require adjustment as website layouts or upstream access systems change.
+- proxy URL generation and target preservation
+- browser popup behavior when the active tab changes
+- host-specific selectors or page patterns in the legacy helper files
+- manifest match patterns if the project grows or changes browser support
 
 ---
 
-## Project status
+## Current status
 
-This project is best understood as a library-access helper focused on three priorities:
+This repository is in a usable, functionally focused state for a library-access extension. It remains intentionally hybrid: the toolbar is the primary experience, while the older helper features remain in place for compatibility and optional use.
 
-- proxying the current page through the UMD access path
-- enabling general discovery through UMD Discover
-- connecting users to research support quickly while they read scholarly content
-
-The older bookstore, Google, and Amazon lookup code remains in the repository as supplementary functionality and may be updated independently of the current scholarly-toolbar workflow.
-
----
-
-## License
-
-The repository does not currently declare a formal license. If this extension is intended for internal UMD use only, a project-specific internal-use or licensing statement should be added before broader distribution.
+If the project is being prepared for a public GitHub repository, the recommended next step is to add a formal license file and, if desired, a short project screenshot or architecture diagram to make the repo easier to navigate.

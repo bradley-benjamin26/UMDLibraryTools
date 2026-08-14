@@ -1,30 +1,142 @@
-const PROXY_BASE_URL = "http://proxy-um.researchport.umd.edu/login?url=";
+// Popup logic for the browser action; this mirrors the direct proxied-host behavior used by
+// the working bookmarklet flow and resolves the current tab to a safe proxy target.
+const PROXY_BASE_URL = "https://proxy-um.researchport.umd.edu/login?url=";
 const SKIP_STORAGE_KEY = "umcp-library-skip-hosts";
+const PROXY_TARGET_STORAGE_KEY = "umcp-library-proxy-last-target";
 
 // Keep the proxy URL builder isolated so the popup logic can stay focused on
 // current-tab inspection and user interaction.
 function buildProxyUrl(url) {
   if (!url) return "";
-  return `${PROXY_BASE_URL}${encodeURIComponent(url)}`;
+
+  try {
+    const parsed = new URL(url);
+    const proxyHostname = parsed.hostname.replace(/\./g, "-") + ".proxy-um.researchport.umd.edu";
+    return `https://${proxyHostname}${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch (error) {
+    return `${PROXY_BASE_URL}${encodeURIComponent(url)}`;
+  }
+}
+
+function isProxyHost(hostname) {
+  return typeof hostname === "string" && /(?:^|\.)proxy-um\.researchport\.umd\.edu$/i.test(hostname);
+}
+
+function getProxyTargetFromCurrentUrl(url) {
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (!isProxyHost(parsed.hostname)) {
+      return "";
+    }
+
+    const params = ["url", "qurl", "target", "redirect"];
+    for (const key of params) {
+      const candidate = parsed.searchParams.get(key);
+      if (candidate && /^https?:\/\//i.test(candidate)) {
+        return candidate;
+      }
+    }
+  } catch (error) {
+    // Ignore malformed proxy URLs; they are not valid targets.
+  }
+
+  return "";
+}
+
+function getStoredProxyTarget() {
+  try {
+    const rawValue = window.sessionStorage.getItem(PROXY_TARGET_STORAGE_KEY);
+    if (rawValue) {
+      const parsed = JSON.parse(rawValue);
+      return typeof parsed === "string" && /^https?:\/\//i.test(parsed) ? parsed : "";
+    }
+  } catch (error) {
+    // Ignore storage failures; the popup can also use Chrome storage when available.
+  }
+
+  if (chrome && chrome.storage && chrome.storage.local) {
+    let candidate = "";
+    chrome.storage.local.get([PROXY_TARGET_STORAGE_KEY], (items) => {
+      candidate = items && items[PROXY_TARGET_STORAGE_KEY] ? items[PROXY_TARGET_STORAGE_KEY] : "";
+    });
+    return candidate;
+  }
+
+  return "";
+}
+
+function setStoredProxyTarget(url) {
+  try {
+    if (!url || !/^https?:\/\//i.test(url)) {
+      return;
+    }
+    window.sessionStorage.setItem(PROXY_TARGET_STORAGE_KEY, JSON.stringify(url));
+  } catch (error) {
+    // Ignore storage failures; popup behavior can still proceed without the fallback.
+  }
+
+  if (chrome && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.set({ [PROXY_TARGET_STORAGE_KEY]: url });
+  }
+}
+
+function resolvePopupProxyTarget(url) {
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+
+    if (isProxyHost(parsed.hostname)) {
+      const currentUrlTarget = getProxyTargetFromCurrentUrl(url);
+      if (currentUrlTarget) {
+        console.info("[UMD proxy] popup ignoring proxy menu host, using current URL qurl target:", currentUrlTarget);
+        return currentUrlTarget;
+      }
+
+      const storedTarget = getStoredProxyTarget();
+      if (storedTarget) {
+        console.info("[UMD proxy] popup ignoring proxy menu host, using stored target:", storedTarget);
+        return storedTarget;
+      }
+
+      const referrer = document.referrer || "";
+      if (referrer) {
+        try {
+          const referrerUrl = new URL(referrer);
+          if (!isProxyHost(referrerUrl.hostname)) {
+            console.info("[UMD proxy] popup ignoring proxy menu host, using referrer:", referrerUrl.toString());
+            return referrerUrl.toString();
+          }
+        } catch {
+          // Ignore invalid referrer values.
+        }
+      }
+
+      console.info("[UMD proxy] popup ignoring proxy menu host; current tab is a proxy redirect page.", url);
+      return "";
+    }
+
+    const canonicalTarget = parsed.toString();
+    setStoredProxyTarget(canonicalTarget);
+    console.info("[UMCP Popup Debug] tab url:", url);
+    console.info("[UMCP Popup Debug] resolved proxy target:", canonicalTarget);
+    return canonicalTarget;
+  } catch (error) {
+    console.info("[UMCP Popup Debug] invalid tab url:", url);
+    return url;
+  }
 }
 
 function readSkippedHosts() {
-  try {
-    const rawValue = window.localStorage.getItem(SKIP_STORAGE_KEY);
-    if (!rawValue) return [];
-    const parsed = JSON.parse(rawValue);
-    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
-  } catch (error) {
-    return [];
-  }
+  return [];
 }
 
 function writeSkippedHosts(hosts) {
-  try {
-    window.localStorage.setItem(SKIP_STORAGE_KEY, JSON.stringify(hosts));
-  } catch (error) {
-    // Ignore storage failures silently so the popup remains usable.
-  }
+  // Do not persist hide decisions. The toolbar should remain visible as soon as the
+  // user returns to a scholarly page.
 }
 
 function isHostSkipped(hostname) {
@@ -176,7 +288,11 @@ function removeHostFromSkipList(hostname) {
         return;
       }
 
-      const proxiedUrl = buildProxyUrl(currentUrl);
+      const proxyTargetUrl = resolvePopupProxyTarget(currentUrl);
+      setStoredProxyTarget(proxyTargetUrl);
+      const proxiedUrl = buildProxyUrl(proxyTargetUrl);
+      console.info("[UMD proxy] click handler", { target: proxyTargetUrl, proxiedUrl });
+      console.info("[UMCP Popup Debug] final proxied url:", proxiedUrl);
       await chrome.tabs.update(tab.id, { url: proxiedUrl });
       setMessage("The page was opened through the UMD proxy.");
     } catch (error) {

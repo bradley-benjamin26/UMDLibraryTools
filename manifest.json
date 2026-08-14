@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "UMCP Library Search",
-  "version": "0.1.0",
-  "description": "Adds general UMCP library catalog search links to supported pages.",
+  "name": "UMD Library Tools",
+  "version": "0.2.0",
+  "description": "Provides library access and discovery tools for scholarly pages, including direct UMD proxy access, UMD Discover search, and research-help links.",
   "permissions": [
     "activeTab",
     "storage"
@@ -18,29 +18,39 @@
         "https://umcp.bncollege.com/course-material-listing-page*"
       ],
       "js": [
-        "searchIntelligence.js","content.js"
+        "searchIntelligence.js",
+        "content.js"
       ],
       "css": [
         "content.css"
       ],
       "run_at": "document_idle"
     },
-
-        {
+    {
       "matches": [
         "https://www.google.com/search*",
         "https://scholar.google.com/scholar*"
       ],
-      "js": ["searchIntelligence.js", "googleSearch.js"],
-      "css": ["googleSearch.css"],
+      "js": [
+        "searchIntelligence.js",
+        "googleSearch.js"
+      ],
+      "css": [
+        "googleSearch.css"
+      ],
       "run_at": "document_idle"
     },
     {
       "matches": [
         "https://www.amazon.com/*"
       ],
-      "js": ["searchIntelligence.js", "amazonSearch.js"],
-      "css": ["amazonSearch.css"],
+      "js": [
+        "searchIntelligence.js",
+        "amazonSearch.js"
+      ],
+      "css": [
+        "amazonSearch.css"
+      ],
       "run_at": "document_idle"
     },
     {
@@ -48,14 +58,15 @@
         "http://*/*",
         "https://*/*"
       ],
-      "js": ["proxyButton.js"],
+      "js": [
+        "proxyButton.js"
+      ],
       "run_at": "document_idle"
     }
   ],
   "action": {
-    "default_title": "UMCP Library Checker",
+    "default_title": "UMD Library Tools",
     "default_popup": "popup.html"
   }
-
 }
 
