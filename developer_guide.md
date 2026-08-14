@@ -1,20 +1,18 @@
-# UMCP Library Checker — Developer Guide
+# UMD Library Tools — Developer Guide
 
 ## Overview
 
-This project is a Chrome extension that adds lightweight library access and discovery actions directly into the browsing experience. The active design is a scholarly-page toolbar that appears only when the site looks like an academic or paywalled resource, giving users a small set of fast actions rather than a large embedded library interface.
+UMD Library Tools is a Chrome extension that reduces friction between a user’s browsing session and the library resources they may need. The active architecture is a toolbar injected on likely scholarly pages. It is intentionally lightweight and built around a small set of practical actions: proxy access, UMD Discover search, research help, and cite support.
 
-The current codebase has two layers:
+The current implementation is organized as a modular toolbar system rather than a single large script. The main runtime files are:
 
-1. the active toolbar and proxy workflow in `proxyButton.js`
-2. older page-specific helper logic in `content.js`, `googleSearch.js`, `amazonSearch.js`, and `searchIntelligence.js`
+- `toolbarCore.js` — shared injection, styling, detection, and utility logic
+- `toolbarProxy.js` — proxy URL construction and direct access workflow
+- `toolbarSearch.js` — search form and Discover actions
+- `toolbarHelp.js` — LibAnswers link behavior
+- `toolbarCite.js` — metadata extraction, citation formatting, RIS export, and Zotero support
 
-The extension is intentionally centered on a narrow set of tasks:
-
-- proxy the current page through the UMD access path
-- search UMD Discover from the current page
-- open a research-help destination quickly
-- provide a site-level opt-out when the toolbar is not useful
+Legacy support files remain in the repository for compatibility and older workflows, but the active user experience is driven by the toolbar modules above.
 
 ---
 
@@ -22,27 +20,18 @@ The extension is intentionally centered on a narrow set of tasks:
 
 ### Content-script entry points
 
-The extension is registered in `manifest.json` and uses content scripts for page injection.
+`manifest.json` registers the toolbar scripts on broad URL matches so they can evaluate pages and decide whether to show the library toolbar.
 
-Important runtime behavior:
+The main flow is:
 
-- `proxyButton.js` runs on broad URL matches, so it can evaluate nearly any page and decide whether to inject the toolbar
-- the legacy helper scripts run on specific site patterns such as Google, Amazon, and BNCollege
-- the popup is not a content script; it is a browser action with a popup UI
+1. page loads and the content scripts execute
+2. `toolbarCore.js` decides whether the page is likely scholarly
+3. `toolbarProxy.js`, `toolbarSearch.js`, `toolbarHelp.js`, and `toolbarCite.js` attach their actions to the injected toolbar
+4. chrome extension popup logic provides a separate proxy shortcut from the browser action
 
-### Initialization flow
+### Important design note
 
-On a target page, the main script flow is roughly:
-
-1. page loads and the content script executes
-2. `proxyButton.js` reads `window.location` and `document` state
-3. it checks host exclusions and page-level heuristics
-4. it decides whether the page is scholarly enough to support a toolbar
-5. if the page qualifies, it injects the toolbar and styles
-6. the toolbar binds click handlers to proxy, search, help, and hide actions
-7. the popup logic independently handles current-tab proxying when the user uses the browser action
-
-This means the page-injection logic and the popup logic are separate but complementary entry points.
+This project uses a modular content-script design instead of a single monolithic injection file. That makes maintenance easier, keeps page detection separate from action logic, and reduces the chance that one feature affects another.
 
 ---
 
@@ -50,174 +39,122 @@ This means the page-injection logic and the popup logic are separate but complem
 
 ### `manifest.json`
 
-The extension manifest is the runtime source of truth.
+The manifest is the runtime source of truth for:
 
-It governs:
+- extension identity and version
+- permissions
+- content-script matches
+- toolbar stylesheet injection
+- browser action popup configuration
 
-- extension metadata
-- permission scope
-- content script registration
-- host permissions for external library-related endpoints
-- browser action configuration
+The toolbar scripts are injected broadly enough to allow the page-detection logic to decide when a toolbar is relevant.
 
-This file matters because some behaviors depend on content scripts matching page patterns and on browser permissions allowing access to the correct host contexts.
+### `toolbarCore.js`
 
-### `proxyButton.js`
+This is the foundation for the active toolbar system.
 
-This is the most important file in the current implementation.
+It includes:
 
-It contains the main logic for:
+- toolbar container creation
+- button creation and theme application
+- page-root insertion helpers
+- live-region announcements
+- scholarly page detection heuristics
+- shared DOM and string utilities
 
-- toolbar creation
-- detection of likely scholarly pages
-- host exclusions and skip logic
-- proxy URL generation
-- search-panel behavior
-- research-help link creation
-- toolbar CSS injection
-- keyboard-focus handling
-- `localStorage` persistence for site opt-outs
+This file is the best starting point for future updates to toolbar layout, behavior, or detection logic.
 
-Important constants:
+### `toolbarProxy.js`
 
-- `PROXY_BASE_URL`
-- `CONTAINER_ID`
-- `SKIP_STORAGE_KEY`
-- `TOOLBAR_CONFIG`
-- `BUTTON_THEMES`
-- `TOOLBAR_STYLES`
+This file manages the direct proxy flow.
 
-The main decision function is `isLikelyScholarlyPage()`. It evaluates:
+Responsibilities include:
 
-- hostname exclusions
-- URL path hints
-- paywall-like signals in page text
-- metadata tags such as citation titles and DOI references
+- canonical URL selection
+- recognizing the current page already being proxied
+- constructing the correct proxied URL
+- attaching the Proxy action to the toolbar
 
-If the function returns `true`, the toolbar is injected. Otherwise, the script exits without adding UI.
+The direct page-preserving flow is intentionally designed to match working bookmarklet behavior and avoid generic menu redirects.
 
-### `popup.js`
+### `toolbarSearch.js`
 
-This file handles the browser action popup.
+This file creates the UMD Discover action and search panel. It uses a lightweight in-page form to avoid forcing users to leave the page.
 
-Responsibilities:
+### `toolbarHelp.js`
 
-- query the active tab
-- validate that the tab exposes a usable URL
-- render status messages in the popup
-- open the page through the UMD proxy when clicked
+This file creates the LibAnswers help action and points the user to the UMD research-help site.
 
-The popup is intentionally simple and lightweight. It is not a general search UI; it mainly acts as a proxy shortcut.
+### `toolbarCite.js`
 
-### `popup.html`
-
-This file renders popup content and accessibility hooks.
-
-Important details:
-
-- status text uses a live region for screen readers
-- the main action button has an explicit aria label
-- the popup structure is intentionally minimal to reduce complexity and improve maintainability
-
-### `content.js`
-
-This is an older helper layer for bookstore-style flows.
-
-It is designed to:
-
-- detect item blocks in supported bookstore pages
-- extract structured metadata such as ISBN, title, and author
-- inject result panels for likely library matches
-- perform catalog lookups when the context is precise enough
-
-This file is useful as an example of how page-specific extraction logic is done, but it is not the primary user path in the current version.
-
-### `googleSearch.js`
-
-This file supports older Google Search and Google Scholar discovery patterns.
-
-It is responsible for:
-
-- identifying Google or Scholar result pages
-- reading the incoming query from the URL
-- cleaning/inferencing search intent
-- trying a sequence of library lookups when the query is likely relevant
-- injecting catalog result panels into search results
-
-This file depends on query heuristics and careful filtering because raw search queries are often noisy.
-
-### `amazonSearch.js`
-
-This file supports Amazon product/search flows.
-
-It uses a hybrid strategy:
-
-- prefer ISBN when it is reliably available from the page
-- fall back to title/author logic when ISBN is not visible
-- use search query logic when the page is a search-result page rather than a product page
-
-This is a good example of a page that can provide either strong structured metadata or weak query-only metadata.
-
-### `searchIntelligence.js`
-
-This file centralizes the logic for query cleanup and intent detection.
+This is the citation feature module.
 
 It handles:
 
-- normalization of raw search strings
-- stripping scaffolding phrases like “I’m looking for”
-- removing noisy search operators and irrelevant token patterns
-- deciding whether a query is likely to be a catalog search or a general web query
-- returning a cleaned query for downstream catalog lookup logic
+- metadata harvesting from meta tags, JSON-LD, and page text
+- splitting author names correctly into first/last-name objects
+- stripping noisy branding from titles such as JSTOR and Project MUSE prefixes
+- building MLA, Chicago Notes & Bibliography, and APA citations
+- creating RIS exports and Zotero payloads
 
-This file is a small but important layer that prevents the extension from making low-quality catalog searches on noisy pages.
+### `popup.js`
 
-### CSS files
+This file handles the browser action popup. It exposes a simple active-tab fallback for users who prefer to trigger access from the extension menu instead of the page toolbar.
 
+### `popup.html`
+
+This file renders the popup UI and includes the minimal active-tab logic needed to support the popup path.
+
+### `proxyButton.js`
+
+This file still acts as a bootstrap helper. It initializes the toolbar flow and keeps the project compatible with the earlier architecture while the newer modular toolbar files remain the active implementation.
+
+### Legacy support files
+
+The following files remain in the repository for compatibility and older workflows:
+
+- `content.js`
+- `googleSearch.js`
+- `amazonSearch.js`
+- `searchIntelligence.js`
 - `content.css`
 - `googleSearch.css`
 - `amazonSearch.css`
 
-These files style the older page-specific helper panels. The floating toolbar in `proxyButton.js` also injects its own CSS block, which keeps the toolbar styling in the same file as its logic and reduces the number of separate stylesheets to manage.
+These are not the main user experience, but they preserve older functionality and provide a migration path for future refinements.
 
 ---
 
-## Main logic in `proxyButton.js`
+## Styling architecture
 
-The developer working on the main feature should begin here.
+The current styling is shared in `toolbar.css` rather than embedded in a single script. This keeps the toolbar and citation panel styles easier to review and update.
 
-### Constants and configuration
+The design uses a UMD-themed palette and a compact floating action pattern, with a focus on clarity over clutter.
 
-The file defines the following major configuration groups:
+---
 
-- `PROXY_BASE_URL`: proxy target prefix for institutionally proxied pages
-- `SKIP_STORAGE_KEY`: browser-storage key for hidden hosts
-- `TOOLBAR_CONFIG`: page detection rules and exclusion values
-- `BUTTON_THEMES`: CSS class names for toolbar button variants
-- `TOOLBAR_STYLES`: injected CSS used by the toolbar
+## Validation flow
 
-These are centralized so future tuning does not require scattered hard-coded values.
+This project is designed to be validated with quick syntax and manifest checks:
 
-### Host exclusion logic
+```bash
+cd "/Users/bbradle1/Documents/projects/TopTextbookExtension" && node --check toolbarCite.js && node --check toolbarCore.js && node --check toolbarProxy.js && node --check toolbarSearch.js && node --check toolbarHelp.js && node --check proxyButton.js && python3 -m json.tool manifest.json >/dev/null && echo 'validation-ok'
+```
 
-The code uses `ignoredHostnames` and `excludedHostPatterns` to prevent the toolbar from showing on domains where it would be redundant or unhelpful.
+This should be used after making UI or logic changes, especially when modifying metadata handling, page detection, or toolbar wiring.
 
-Examples include:
+---
 
-- Google
-- Amazon
-- social media hosts
-- library and university hosts
-- catalog surfaces already managed by the library
+## Maintenance notes
 
-This is important because the toolbar is intended to be a focused helper, not a persistent banner on content that already has strong library context.
+The most likely future work areas are:
 
-### Semantic page detection
+- improved metadata heuristics for publisher-specific pages
+- additional citation item types beyond journal articles and books
+- stricter detection of scholarly pages with unusual URL patterns
+- extension packaging and release metadata for GitHub publication
 
-The toolbar uses a combination of:
-
-- host-level heuristics
-- URL patterns such as `/doi/`, `/journal/`, and `/abstract/`
+The modular structure means most future work can be done without broad rewrites, as long as new logic remains attached to the existing toolbar architecture.
 - paywall-like text signals
 - citation metadata elements in the page
 

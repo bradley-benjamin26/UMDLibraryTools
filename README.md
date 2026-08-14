@@ -1,144 +1,130 @@
 # UMD Library Tools
 
-UMD Library Tools is a Chrome extension that helps users move quickly from an article or scholarly page to the appropriate library access or discovery workflow. The extension combines a lightweight in-page toolbar with a popup-based action flow and a few legacy helper integrations that remain useful for catalog-oriented pages.
+UMD Library Tools is a Chrome extension for scholarly research workflows. It helps users access library resources quickly from a page they are already reading by providing a lightweight toolbar for proxy access, search, help, and citation support.
 
-The current focus is on scholarly pages and paywalled journal content. The extension offers a low-friction way to:
+The extension focuses on a simple workflow:
 
-- open the current page through the UMD proxy path
-- search UMD Discover without leaving the page
-- quickly reach UMD research help
-
----
-
-## Project overview
-
-This project grew out of a broader set of context-sensitive library helpers and now centers on a single, simple user experience:
-
-1. detect when a user is on a likely scholarly page
-2. surface a small floating toolbar in the upper-right corner of the page
-3. provide an access action, a discovery action, and a help action
-4. retain the older site-specific helper flows for search and catalog pages without making them the primary experience
-
-This keeps the extension useful for a wide range of browsing contexts while keeping the main workflow focused and easy to understand.
+- detect when a user is on a likely scholarly page
+- show a compact toolbar in the upper-right corner
+- allow direct proxy access to the page through UMD
+- open UMD Discover or LibAnswers without leaving the page
+- provide citation tools for journal articles and books when metadata can be extracted
 
 ---
 
-## Primary features
+## Features
 
-### Direct proxy flow
+### Direct proxy access
 
-The extension generates a direct proxied-domain URL for the current page, matching the working proxy pattern used by the bookmarklet flow. This avoids the login-menu route and preserves the actual target page instead of sending the user to a generic proxy landing page.
+The extension builds a direct proxied link for the current page and uses the UMD research-port workflow rather than sending users to a generic proxy menu. This preserves the original target page more reliably than a login redirect flow.
 
-### In-page toolbar
+### Toolbar actions
 
-On likely scholarly pages, the extension injects a compact toolbar with:
+On likely scholarly pages, the toolbar includes:
 
-- a proxy button
-- a search action for UMD Discover
-- a research-help link to UMD LibAnswers
-- a hide option for pages where the toolbar is not useful
+- Proxy access
+- Search UMD Discover
+- Research help via LibAnswers
+- Cite support for metadata extraction and export
+- Optional hide action for sites where the toolbar is not useful
 
-### Popup flow
+### Citation support
 
-The popup validates the active tab URL and provides a consistent proxy action from the extension action menu when the user wants a second access path.
+The citation module currently supports metadata harvesting and citation formatting for journal articles and books. It can:
 
-### Legacy support pages
+- collect author, title, journal, volume, issue, pages, DOI, URL, and abstract data
+- normalize author names into usable first/last-name objects
+- generate MLA, Chicago Notes & Bibliography, and APA citations
+- export RIS data and send a citation to Zotero if available locally
 
-The codebase still includes helper logic for:
+### Popup support
 
-- BNCollege pages
-- Google and Google Scholar result pages
-- Amazon pages
-
-These remain present for compatibility and to preserve older catalog-style workflows, but they are not the primary user experience.
+The browser action popup provides a second access path for the current tab, making the proxy option available without requiring the user to open the page’s toolbar.
 
 ---
 
-## Repository structure
+## Project structure
 
-### Runtime files
+### Core runtime files
 
-- `proxyButton.js` — scholarly toolbar injection, page detection, proxy generation, toolbar behavior, Discover search form, help navigation
-- `popup.js` — popup logic for active-tab URL inspection and proxy actions
-- `popup.html` — browser action popup UI
-
-### Legacy helper files
-
-- `content.js` — BNCollege and legacy page helper logic
-- `googleSearch.js` — Google and Google Scholar support
-- `amazonSearch.js` — Amazon support
-- `searchIntelligence.js` — shared metadata and search logic
+- `toolbarCore.js` — shared toolbar utilities, page detection, button theming, root injection
+- `toolbarProxy.js` — direct proxy generation and page-proxy logic
+- `toolbarSearch.js` — UMD Discover search UI and submission flow
+- `toolbarHelp.js` — LibAnswers help action
+- `toolbarCite.js` — citation metadata extraction, style formatting, RIS export, and Zotero support
+- `proxyButton.js` — bootstrap/init shim for the toolbar flow
+- `popup.js` — browser action popup logic
+- `popup.html` — popup UI
 
 ### Styling
 
-- `content.css` — legacy page styling
-- `googleSearch.css` — Google-specific styling
-- `amazonSearch.css` — Amazon-specific styling
+- `toolbar.css` — main toolbar and citation-panel styling
+- `content.css` — legacy page helper styling
+- `googleSearch.css` — Google helper styling
+- `amazonSearch.css` — Amazon helper styling
 
-### Project metadata
+### Legacy support files
 
-- `manifest.json` — extension registration and script matches
-- `README.md` — project overview and local development notes
+- `content.js` — legacy bookstore/page helper logic
+- `googleSearch.js` — legacy Google and Google Scholar helper logic
+- `amazonSearch.js` — legacy Amazon page helper logic
+- `searchIntelligence.js` — shared query cleaning and metadata heuristics
+
+### Metadata and project docs
+
+- `manifest.json` — extension registration, permissions, and injected scripts
+- `README.md` — project overview and usage notes
+- `developer_guide.md` — implementation details and architecture history
+- `executive_summary.md` — concise product summary
 
 ---
 
-## Proxy behavior and implementation notes
-
-The proxy workflow intentionally uses the direct proxied-host pattern rather than the `login?url=` route because the login-host flow can land the user on a generic proxy menu instead of the intended article page. The direct host pattern matches the working bookmarklet flow and preserves the page target more reliably.
-
-This is an important implementation detail because the bookmarklet is a useful reference point for the intended user experience: open the proxied publisher page directly and let the access system handle the session/auth flow.
-
----
-
-## Development notes
-
-### Local testing
+## Installation and local testing
 
 1. Open `chrome://extensions`.
 2. Enable Developer mode.
-3. Choose “Load unpacked.”
+3. Click Load unpacked.
 4. Select this project directory.
+5. Open a journal or scholarly page and confirm the toolbar appears.
 
-### Suggested verification flow
+### Recommended validation checks
 
 - open a JSTOR or Project MUSE article page
-- confirm the toolbar appears in the upper-right corner
-- click the proxy button and verify the page loads through the direct proxied host
-- verify the Discover action opens the search form
-- verify the research-help button opens the LibAnswers page
-- verify the popup still opens and proxies the active page correctly
-
-### Browser compatibility
-
-The extension is designed for Chromium-based browsers and is intended to be loaded as an unpacked extension during development rather than published as a broad external distribution.
+- confirm the toolbar appears in the upper-right area
+- click Proxy and verify the direct proxied page loads as expected
+- click Search UMD Discover and confirm the search panel opens
+- click Research Help and confirm LibAnswers opens
+- click Cite and confirm the panel opens with citation options
 
 ---
 
-## Accessibility notes
+## Browser compatibility
 
-The project includes several accessibility-oriented decisions:
-
-- explicit focus styling for keyboard navigation
-- descriptive button labels and accessible search controls
-- live-region status messaging for dynamic UI feedback
-- a minimal floating action pattern so the toolbar stays unobtrusive while remaining visible and usable
+This project is designed for Chromium-based browsers and is intended to be used as an unpacked extension during development.
 
 ---
 
-## Notes for future maintenance
+## Accessibility and UX notes
 
-The areas most likely to require ongoing updates are:
+The extension includes a small set of accessibility-oriented features:
 
-- scholarly detection heuristics in `proxyButton.js`
-- proxy URL generation and target preservation
-- browser popup behavior when the active tab changes
-- host-specific selectors or page patterns in the legacy helper files
-- manifest match patterns if the project grows or changes browser support
+- explicit focus styles for toolbar and popup controls
+- live-region announcements for dynamic status updates
+- compact inline actions that minimize visual interruption on article pages
+- a hide option so users can opt out on sites where the toolbar is not useful
 
 ---
 
-## Current status
+## Validation
 
-This repository is in a usable, functionally focused state for a library-access extension. It remains intentionally hybrid: the toolbar is the primary experience, while the older helper features remain in place for compatibility and optional use.
+Use the following command to verify the extension still parses cleanly:
 
-If the project is being prepared for a public GitHub repository, the recommended next step is to add a formal license file and, if desired, a short project screenshot or architecture diagram to make the repo easier to navigate.
+```bash
+cd "/Users/bbradle1/Documents/projects/TopTextbookExtension" && node --check toolbarCite.js && node --check toolbarCore.js && node --check toolbarProxy.js && node --check toolbarSearch.js && node --check toolbarHelp.js && node --check proxyButton.js && python3 -m json.tool manifest.json >/dev/null && echo 'validation-ok'
+```
+
+---
+
+## Repository status
+
+The project is in a working, extension-ready state for a GitHub repository. It keeps compatibility with older helper features while using the modular toolbar architecture as the primary user experience.
