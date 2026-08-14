@@ -466,6 +466,79 @@
     return label;
   }
 
+  function escapeCsvValue(value) {
+    const normalized = String(value == null ? "" : value).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+    return `"${normalized.replace(/"/g, '""')}"`;
+  }
+
+  async function exportBookListCsv() {
+    const books = getAllBooks();
+
+    if (!books.length) {
+      announceMessage("No books are available to export.");
+      return;
+    }
+
+    const rows = await Promise.all(books.map(async (book) => {
+      const lookup = await fetchLibraryAvailability(book);
+      const availability = lookup.onlineAvailable
+        ? "Online"
+        : lookup.status === LIBRARY_STATUS.AVAILABLE
+          ? "Available"
+          : lookup.status === LIBRARY_STATUS.NO_MATCH
+            ? "No match"
+            : lookup.status === LIBRARY_STATUS.FAILED
+              ? "Lookup failed"
+              : "Not available";
+
+      return {
+        title: book.title || "",
+        author: book.author || "",
+        isbn: book.isbn || "",
+        availability,
+        branch: lookup.branch || "",
+        callNumber: lookup.callNumber || "",
+        primoRecordUrl: lookup.recordUrl || ""
+      };
+    }));
+
+    const headers = [
+      "Title",
+      "Author",
+      "ISBN",
+      "Library Availability",
+      "Branch",
+      "Call Number",
+      "Primo Record URL"
+    ];
+
+    const csvLines = [
+      headers.join(","),
+      ...rows.map((row) => [
+        escapeCsvValue(row.title),
+        escapeCsvValue(row.author),
+        escapeCsvValue(row.isbn),
+        escapeCsvValue(row.availability),
+        escapeCsvValue(row.branch),
+        escapeCsvValue(row.callNumber),
+        escapeCsvValue(row.primoRecordUrl)
+      ].join(","))
+    ];
+
+    const csvContent = `${csvLines.join("\n")}\n`;
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = `umd-library-book-list-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(objectUrl);
+
+    announceMessage(`Exported ${rows.length} books to CSV.`);
+  }
+
   // ---------------------------------------------------------------------------
   // Book data extraction
   // ---------------------------------------------------------------------------
@@ -630,7 +703,14 @@
     debugLog("SRU numberOfRecords:", numberOfRecords, logLabel);
 
     if (!numberOfRecords) {
-      return { status: LIBRARY_STATUS.NO_MATCH, mmsId: null, recordUrl: null };
+      return {
+        status: LIBRARY_STATUS.NO_MATCH,
+        onlineAvailable: false,
+        branch: "",
+        callNumber: "",
+        mmsId: null,
+        recordUrl: null
+      };
     }
 
     const mmsId = normalizeText(
@@ -649,15 +729,44 @@
       xml.querySelectorAll('datafield[tag="AVA"] > subfield[code="e"]')
     ).map(node => normalizeText(node.textContent).toLowerCase());
 
+    const onlineAvailabilityValues = Array.from(
+      xml.querySelectorAll('datafield[tag="AVE"] > subfield[code="e"]')
+    ).map(node => normalizeText(node.textContent).toLowerCase());
+
+    const holdingNodes = Array.from(xml.querySelectorAll('datafield[tag="852"]'));
+    const locationInfo = holdingNodes
+      .map(node => {
+        const branch = normalizeText(Array.from(node.querySelectorAll('subfield[code="b"]'))
+          .map(item => item.textContent || "")
+          .join(" "));
+        const callNumber = normalizeText(Array.from(node.querySelectorAll('subfield[code="h"]'))
+          .map(item => item.textContent || "")
+          .join(" "));
+        const collection = normalizeText(Array.from(node.querySelectorAll('subfield[code="c"]'))
+          .map(item => item.textContent || "")
+          .join(" "));
+        return { branch, callNumber, collection };
+      })
+      .find(({ branch, callNumber, collection }) => branch || callNumber || collection) || { branch: "", callNumber: "", collection: "" };
+
     debugLog("SRU AVA subfield e values:", availabilityValues, logLabel);
+    debugLog("SRU AVE subfield e values:", onlineAvailabilityValues, logLabel);
+    debugLog("SRU location info:", locationInfo, logLabel);
     debugLog("SRU MMS ID:", mmsId, logLabel);
 
-    const status = availabilityValues.some(v => v === "available")
-      ? LIBRARY_STATUS.AVAILABLE
-      : LIBRARY_STATUS.NOT_AVAILABLE;
+    const onlineAvailable = onlineAvailabilityValues.some(v => v === "available");
+    const printAvailable = availabilityValues.some(v => v === "available");
+    const status = onlineAvailable
+      ? "Online"
+      : printAvailable
+        ? LIBRARY_STATUS.AVAILABLE
+        : LIBRARY_STATUS.NOT_AVAILABLE;
 
     return {
       status,
+      onlineAvailable,
+      branch: locationInfo.branch || locationInfo.collection || "",
+      callNumber: locationInfo.callNumber || "",
       mmsId: mmsId || null,
       recordUrl: mmsId ? buildPrimoRecordUrl(mmsId) : null
     };
@@ -773,9 +882,9 @@
     container.innerHTML = "";
     container.classList.add(CLASSES.availabilityText);
 
-    if (result.status === LIBRARY_STATUS.AVAILABLE && result.recordUrl) {
+    if (result.recordUrl && (result.onlineAvailable || result.status === LIBRARY_STATUS.AVAILABLE)) {
       const link = createLink(
-        LIBRARY_STATUS.AVAILABLE,
+        result.onlineAvailable ? "Online" : LIBRARY_STATUS.AVAILABLE,
         result.recordUrl,
         `${CLASSES.availabilityLink} ${CLASSES.availabilityText}`
       );
@@ -938,22 +1047,31 @@
     actions.className = CLASSES.toolbarActions;
     actions.setAttribute("aria-label", "Library tools actions");
 
-    const showButton = document.createElement("button");
-    showButton.type = "button";
-    showButton.className = CLASSES.toolbarButton;
-    showButton.textContent = "Show extracted books";
-    showButton.setAttribute("aria-label", "Show extracted books list");
-    showButton.addEventListener("click", renderSummaryPanel);
+    const toggleButton = document.createElement("button");
+    toggleButton.type = "button";
+    toggleButton.className = `umcp-library-summary-toggle-button ${CLASSES.toolbarButton}`;
+    toggleButton.textContent = "Show extracted books";
+    toggleButton.setAttribute("aria-label", "Show extracted books list");
+    toggleButton.setAttribute("aria-expanded", "false");
+    toggleButton.addEventListener("click", () => {
+      const hasPanel = !!document.querySelector(`.${CLASSES.summaryPanel}`);
+      if (hasPanel) {
+        removeSummaryPanel();
+        return;
+      }
+      renderSummaryPanel();
+    });
 
-    const hideButton = document.createElement("button");
-    hideButton.type = "button";
-    hideButton.className = `${CLASSES.toolbarButton} ${CLASSES.toolbarButtonSecondary}`;
-    hideButton.textContent = "Hide extracted books";
-    hideButton.setAttribute("aria-label", "Hide extracted books list");
-    hideButton.addEventListener("click", () => removeSummaryPanel());
+    const exportButton = document.createElement("button");
+    exportButton.type = "button";
+    exportButton.className = `${CLASSES.toolbarButton} umcp-library-toolbar-button-help-tone`;
+    exportButton.textContent = "Export book list (CSV)";
+    exportButton.setAttribute("aria-label", "Export extracted books as CSV");
+    exportButton.addEventListener("click", exportBookListCsv);
 
-    actions.appendChild(showButton);
-    actions.appendChild(hideButton);
+    actions.appendChild(toggleButton);
+    actions.appendChild(exportButton);
+    updateSummaryToggleButton();
 
     toolbar.appendChild(title);
     toolbar.appendChild(actions);
@@ -971,6 +1089,17 @@
    * The announce option exists so we can avoid duplicate announcements when
    * re-rendering the panel internally.
    */
+  function updateSummaryToggleButton() {
+    const toggleButton = document.querySelector(".umcp-library-summary-toggle-button");
+    if (!toggleButton) return;
+
+    const hasPanel = !!document.querySelector(`.${CLASSES.summaryPanel}`);
+    toggleButton.textContent = hasPanel ? "Hide extracted books" : "Show extracted books";
+    toggleButton.setAttribute("aria-expanded", String(hasPanel));
+    toggleButton.setAttribute("aria-label", hasPanel ? "Hide extracted books list" : "Show extracted books list");
+    toggleButton.classList.toggle("umcp-library-summary-toggle-button--active", hasPanel);
+  }
+
   function removeSummaryPanel({ announce = true } = {}) {
     const panel = document.querySelector(`.${CLASSES.summaryPanel}`);
     if (panel) {
@@ -979,6 +1108,7 @@
         announceMessage("Extracted books list hidden.");
       }
     }
+    updateSummaryToggleButton();
   }
 
   /**
@@ -1093,15 +1223,7 @@
     titleEl.id = IDS.summaryTitle;
     titleEl.textContent = `Library Book List (${books.length})`;
 
-    const closeButton = document.createElement("button");
-    closeButton.type = "button";
-    closeButton.className = CLASSES.summaryClose;
-    closeButton.textContent = "Hide extracted books";
-    closeButton.setAttribute("aria-label", "Hide extracted books list");
-    closeButton.addEventListener("click", () => removeSummaryPanel());
-
     header.appendChild(titleEl);
-    header.appendChild(closeButton);
     panel.appendChild(header);
 
     if (!books.length) {
@@ -1126,6 +1248,7 @@
 
     panel.appendChild(list);
     toolbar.insertAdjacentElement("afterend", panel);
+    updateSummaryToggleButton();
 
     announceMessage(`Extracted books list shown. ${books.length} books found.`);
   }

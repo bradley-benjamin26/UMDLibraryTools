@@ -48,6 +48,30 @@
   cursor: pointer;
 }
 
+.umcp-library-toolbar-button-help-tone {
+  background: #ffd200;
+  border-color: #d8a900;
+  color: #111111;
+}
+
+.umcp-library-toolbar-button-help-tone:hover {
+  background: #f3c300;
+  border-color: #d8a900;
+  color: #111111;
+}
+
+.umcp-library-toolbar-button.umcp-library-toolbar-button-help-tone {
+  background: #ffd200;
+  border-color: #d8a900;
+  color: #111111;
+}
+
+.umcp-library-toolbar-button.umcp-library-toolbar-button-help-tone:hover {
+  background: #f3c300;
+  border-color: #d8a900;
+  color: #111111;
+}
+
 /* Focus visibility */
 .umcp-library-link:focus-visible,
 .umcp-library-summary-link:focus-visible,
@@ -165,6 +189,16 @@
 
 .umcp-library-toolbar-button:hover {
   background: #b51228;
+}
+
+.umcp-library-summary-toggle-button--active {
+  background: #8f0d22 !important;
+  border-color: #680814 !important;
+  box-shadow: 0 0 0 2px rgba(255, 210, 0, 0.18), 0 2px 6px rgba(26, 26, 26, 0.18);
+}
+
+.umcp-library-summary-toggle-button--active:hover {
+  background: #720b1a !important;
 }
 
 .umcp-library-toolbar-button-secondary {

@@ -12,6 +12,7 @@ The current version is centered on a small, high-value workflow:
 - search UMD Discover without leaving the page
 - open LibAnswers for research help quickly
 - offer citation support when page metadata can be extracted
+- surface a bookstore extraction workflow that exports book data for later review
 
 This is designed as a practical access and discovery tool rather than a general-purpose library portal.
 
@@ -26,7 +27,7 @@ The active architecture is modular and toolbar-based:
 - `toolbarCite.js` handles citation and metadata extraction
 - `popup.js` provides the browser action fallback
 
-The extension still includes legacy helper files for Google, Amazon, and bookstore flows, but the primary experience is the toolbar-based scholarly workflow.
+The extension still includes legacy helper files for Google, Amazon, and bookstore flows, but the primary experience is the toolbar-based scholarly workflow. The bookstore flow now includes a compact toggle for opening and closing the extracted book list and a CSV export action that captures title, author, ISBN, availability, and location data when SRU records include it.
 
 ## Why this matters
 

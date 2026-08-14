@@ -402,6 +402,8 @@ If the toolbar works but the popup does not, the issue is likely in the popup’
 
 The Google, Amazon, and bookstore helper flows are not the current primary interface, but they still have site-specific logic.
 
+The bookstore feature now includes a toggleable book-list summary panel and a CSV export action. The export path uses the same SRU availability lookup already used for per-book availability checks, and it can include branch/call-number information when the MARC holdings data are present.
+
 When debugging those pages:
 
 - inspect the exact page pattern being matched
@@ -487,6 +489,9 @@ Typical core parameters:
 #### Bookstore
 
 - `alma.isbn="{isbn}"`
+- title/author fallback queries when ISBN information is absent
+- stored summary list on the page with a single show/hide toggle
+- CSV export of detected book metadata, including availability and SRU branch/call-number details when available
 
 #### Amazon product pages
 

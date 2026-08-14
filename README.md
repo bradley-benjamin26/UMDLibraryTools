@@ -9,6 +9,7 @@ The extension focuses on a simple workflow:
 - allow direct proxy access to the page through UMD
 - open UMD Discover or LibAnswers without leaving the page
 - provide citation tools for journal articles and books when metadata can be extracted
+- support bookstore book-list extraction and CSV export of title, author, ISBN, and availability details
 
 ---
 
@@ -26,7 +27,8 @@ On likely scholarly pages, the toolbar includes:
 - Search UMD Discover
 - Research help via LibAnswers
 - Cite support for metadata extraction and export
-- Optional hide action for sites where the toolbar is not useful
+- Bookstore extraction toggle for showing or hiding extracted books
+- CSV export for bookstore book lists using the detected catalog data
 
 ### Citation support
 
@@ -36,6 +38,20 @@ The citation module currently supports metadata harvesting and citation formatti
 - normalize author names into usable first/last-name objects
 - generate MLA, Chicago Notes & Bibliography, and APA citations
 - export RIS data and send a citation to Zotero if available locally
+
+### Bookstore export support
+
+The bookstore helper can extract books from BNCollege course material pages, show a compact list of detected titles, and export a CSV file with:
+
+- title
+- author
+- ISBN
+- library availability
+- branch or location information when SRU holdings include it
+- call number when present
+- Primo record URL when a match is found
+
+The list can be toggled open or closed from the toolbar without adding a duplicate hide action inside the panel.
 
 ### Popup support
 
@@ -95,6 +111,8 @@ The browser action popup provides a second access path for the current tab, maki
 - click Search UMD Discover and confirm the search panel opens
 - click Research Help and confirm LibAnswers opens
 - click Cite and confirm the panel opens with citation options
+- on a bookstore page, click the extracted-books toggle and confirm the list opens and closes correctly
+- export the extracted book list and confirm the CSV includes title, author, ISBN, availability, and location details when present
 
 ---
 
