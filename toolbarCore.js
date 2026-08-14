@@ -85,6 +85,7 @@
     search: "umcp-library-toolbar-button--search",
     help: "umcp-library-toolbar-button--help",
     cite: "umcp-library-toolbar-button--cite",
+    integrity: "umcp-library-toolbar-button--integrity",
     skip: "umcp-library-toolbar-button--skip"
   };
 
@@ -218,9 +219,66 @@
       display: "flex",
       flexDirection: "column",
       gap: "8px",
-      alignItems: "flex-end"
+      alignItems: "flex-end",
+      transition: "box-shadow 0.15s ease, transform 0.15s ease"
     });
+
+    const grabHandle = document.createElement("div");
+    grabHandle.className = "umcp-library-toolbar-grab-handle";
+    grabHandle.setAttribute("aria-hidden", "true");
+    grabHandle.title = "Drag to move the toolbar";
+    grabHandle.innerHTML = `
+      <svg class="umcp-library-toolbar-grab-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" focusable="false">
+        <path d="M12 2v5M12 17v5M2 12h5M17 12h5M7.5 7.5l4.5-4.5 4.5 4.5M7.5 16.5l4.5 4.5 4.5-4.5M16.5 7.5l4.5 4.5-4.5 4.5M7.5 7.5L3 12l4.5 4.5" />
+      </svg>
+    `;
+    container.appendChild(grabHandle);
+
+    toolbar.makeToolbarDraggable(container);
     return container;
+  };
+
+  toolbar.makeToolbarDraggable = function(container) {
+    if (!container || container.dataset.dragBound === "true") return;
+    container.dataset.dragBound = "true";
+
+    let dragging = false;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+    const handlePointerDown = (event) => {
+      if (event.target.closest("button, input, select, textarea, form")) {
+        return;
+      }
+
+      dragging = true;
+      const rect = container.getBoundingClientRect();
+      offsetX = event.clientX - rect.left;
+      offsetY = event.clientY - rect.top;
+      container.setPointerCapture && container.setPointerCapture(event.pointerId);
+      container.style.transition = "none";
+    };
+
+    const handlePointerMove = (event) => {
+      if (!dragging) return;
+      const nextLeft = clamp(event.clientX - offsetX, 12, Math.max(12, window.innerWidth - container.offsetWidth - 12));
+      const nextTop = clamp(event.clientY - offsetY, 12, Math.max(12, window.innerHeight - container.offsetHeight - 12));
+      container.style.left = `${nextLeft}px`;
+      container.style.top = `${nextTop}px`;
+      container.style.right = "auto";
+    };
+
+    const handlePointerUp = () => {
+      dragging = false;
+      container.style.transition = "box-shadow 0.15s ease, transform 0.15s ease";
+    };
+
+    container.addEventListener("pointerdown", handlePointerDown);
+    container.addEventListener("pointermove", handlePointerMove);
+    container.addEventListener("pointerup", handlePointerUp);
+    container.addEventListener("pointerleave", handlePointerUp);
   };
 
   toolbar.createLiveRegion = function() {
@@ -288,12 +346,14 @@
     const searchButton = toolbar.createSearchButton(container, liveRegion);
     const helpButton = toolbar.createHelpButton(liveRegion);
     const citeButton = toolbar.createCiteButton(liveRegion);
+    const integrityButton = toolbar.createIntegrityButton(liveRegion);
     const skipButton = toolbar.createSkipButton(container, liveRegion);
 
     container.appendChild(proxyButton);
     container.appendChild(searchButton);
     container.appendChild(helpButton);
     container.appendChild(citeButton);
+    container.appendChild(integrityButton);
     container.appendChild(skipButton);
     toolbar.appendToPageRoot(liveRegion);
     toolbar.appendToPageRoot(container);

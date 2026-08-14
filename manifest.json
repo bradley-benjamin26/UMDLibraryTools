@@ -10,7 +10,8 @@
   "host_permissions": [
     "https://umcp.bncollege.com/*",
     "https://usmai-umcp.primo.exlibrisgroup.com/*",
-    "https://usmai-umcp.alma.exlibrisgroup.com/*"
+    "https://usmai-umcp.alma.exlibrisgroup.com/*",
+    "https://api.crossref.org/*"
   ],
   "content_scripts": [
     {
@@ -64,6 +65,7 @@
         "toolbarSearch.js",
         "toolbarHelp.js",
         "toolbarCite.js",
+        "toolbarIntegrity.js",
         "proxyButton.js"
       ],
       "css": [
