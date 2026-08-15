@@ -105,36 +105,36 @@
 }
 
 .umcp-library-toolbar-button--search {
-  background: #ffffff;
-  color: #b11128;
-  border-color: rgba(177, 17, 40, 0.35);
+  background: linear-gradient(180deg, #e21833 0%, #c3122c 100%);
+  color: #ffffff;
+  border-color: #b11128;
 }
 
 .umcp-library-toolbar-button--search:hover {
-  background: rgba(226, 24, 51, 0.06);
-  color: #8f0d22;
+  background: linear-gradient(180deg, #c3122c 0%, #a40f24 100%);
+  color: #ffffff;
 }
 
 .umcp-library-toolbar-button--help {
-  background: linear-gradient(180deg, #ffd200 0%, #f4c400 100%);
-  color: #1f2937;
-  border-color: #c8a600;
+  background: linear-gradient(180deg, #e21833 0%, #c3122c 100%);
+  color: #ffffff;
+  border-color: #b11128;
 }
 
 .umcp-library-toolbar-button--help:hover {
-  background: linear-gradient(180deg, #f4c400 0%, #e8b800 100%);
-  color: #111827;
+  background: linear-gradient(180deg, #c3122c 0%, #a40f24 100%);
+  color: #ffffff;
 }
 
 .umcp-library-toolbar-button--cite {
-  background: #ffffff;
-  color: #b11128;
-  border-color: rgba(226, 24, 51, 0.44);
+  background: linear-gradient(180deg, #e21833 0%, #c3122c 100%);
+  color: #ffffff;
+  border-color: #b11128;
 }
 
 .umcp-library-toolbar-button--cite:hover {
-  background: rgba(255, 210, 0, 0.16);
-  color: #8f0d22;
+  background: linear-gradient(180deg, #c3122c 0%, #a40f24 100%);
+  color: #ffffff;
 }
 
 .umcp-library-toolbar-button--integrity {
@@ -149,14 +149,14 @@
 }
 
 .umcp-library-toolbar-button--skip {
-  background: #ffffff;
-  color: #4b5563;
-  border-color: #d0d7de;
+  background: linear-gradient(180deg, #e21833 0%, #c3122c 100%);
+  color: #ffffff;
+  border-color: #b11128;
 }
 
 .umcp-library-toolbar-button--skip:hover {
-  background: #f3f4f6;
-  color: #1f2937;
+  background: linear-gradient(180deg, #c3122c 0%, #a40f24 100%);
+  color: #ffffff;
 }
 
 .umcp-library-search-form {
