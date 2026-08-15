@@ -55,15 +55,17 @@ function getStoredProxyTarget() {
       return typeof parsed === "string" && /^https?:\/\//i.test(parsed) ? parsed : "";
     }
   } catch (error) {
-    // Ignore storage failures; the popup can also use Chrome storage when available.
+    // Ignore storage failures; try the persistent fallback below.
   }
 
-  if (chrome && chrome.storage && chrome.storage.local) {
-    let candidate = "";
-    chrome.storage.local.get([PROXY_TARGET_STORAGE_KEY], (items) => {
-      candidate = items && items[PROXY_TARGET_STORAGE_KEY] ? items[PROXY_TARGET_STORAGE_KEY] : "";
-    });
-    return candidate;
+  try {
+    const rawValue = window.localStorage.getItem(PROXY_TARGET_STORAGE_KEY);
+    if (rawValue) {
+      const parsed = JSON.parse(rawValue);
+      return typeof parsed === "string" && /^https?:\/\//i.test(parsed) ? parsed : "";
+    }
+  } catch (error) {
+    // Ignore storage failures; callers can still proceed without the fallback.
   }
 
   return "";
@@ -74,13 +76,11 @@ function setStoredProxyTarget(url) {
     if (!url || !/^https?:\/\//i.test(url)) {
       return;
     }
-    window.sessionStorage.setItem(PROXY_TARGET_STORAGE_KEY, JSON.stringify(url));
+    const serialized = JSON.stringify(url);
+    window.sessionStorage.setItem(PROXY_TARGET_STORAGE_KEY, serialized);
+    window.localStorage.setItem(PROXY_TARGET_STORAGE_KEY, serialized);
   } catch (error) {
     // Ignore storage failures; popup behavior can still proceed without the fallback.
-  }
-
-  if (chrome && chrome.storage && chrome.storage.local) {
-    chrome.storage.local.set({ [PROXY_TARGET_STORAGE_KEY]: url });
   }
 }
 
@@ -131,12 +131,34 @@ function resolvePopupProxyTarget(url) {
 }
 
 function readSkippedHosts() {
-  return [];
+  try {
+    const rawValue = window.localStorage.getItem(SKIP_STORAGE_KEY);
+    if (!rawValue) {
+      return [];
+    }
+
+    const parsed = JSON.parse(rawValue);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean);
+  } catch (error) {
+    return [];
+  }
 }
 
 function writeSkippedHosts(hosts) {
-  // Do not persist hide decisions. The toolbar should remain visible as soon as the
-  // user returns to a scholarly page.
+  try {
+    const normalizedHosts = Array.isArray(hosts)
+      ? Array.from(new Set(hosts.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean)))
+      : [];
+    window.localStorage.setItem(SKIP_STORAGE_KEY, JSON.stringify(normalizedHosts));
+  } catch (error) {
+    // Ignore storage failures; the popup can still function without persistence.
+  }
 }
 
 function isHostSkipped(hostname) {

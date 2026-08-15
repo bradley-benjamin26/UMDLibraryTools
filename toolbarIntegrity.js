@@ -159,15 +159,20 @@
       };
     }
 
-    const url = toolbar.buildCrossrefUrl(`/works/${encodeURIComponent(doi)}`);
-    toolbar.addDebugLog("Crossref integrity lookup started.", { doi, url });
+    const normalizedDoi = toolbar.normalizeDoi(doi);
+    if (toolbar.crossrefIntegrityCache.has(normalizedDoi)) {
+      return toolbar.crossrefIntegrityCache.get(normalizedDoi);
+    }
+
+    const url = toolbar.buildCrossrefUrl(`/works/${encodeURIComponent(normalizedDoi)}`);
+    toolbar.addDebugLog("Crossref integrity lookup started.", { doi: normalizedDoi, url });
 
     try {
-      const request = await toolbar.fetchCrossrefJson(`/works/${encodeURIComponent(doi)}`);
+      const request = await toolbar.fetchCrossrefJson(`/works/${encodeURIComponent(normalizedDoi)}`);
       const response = request.response;
 
       toolbar.addDebugLog("Crossref integrity response received.", {
-        doi,
+        doi: normalizedDoi,
         status: response.status,
         ok: response.ok,
         statusText: response.statusText,
@@ -182,13 +187,13 @@
 
       const data = request.data;
       toolbar.addDebugLog("Crossref integrity payload received.", {
-        doi,
+        doi: normalizedDoi,
         payloadPreview: toolbar.stringifyForLog(data, 1500)
       });
 
       const parsed = toolbar.parseCrossrefIntegrityStatus(data);
       const result = {
-        doi,
+        doi: normalizedDoi,
         alerts: parsed.alerts,
         summary: parsed.summary,
         status: parsed.alerts.length ? "alert" : "clear",
@@ -196,22 +201,24 @@
       };
 
       toolbar.addDebugLog("Crossref integrity parsing complete.", {
-        doi,
+        doi: normalizedDoi,
         status: result.status,
         alertCount: result.alerts.length,
         summary: result.summary
       });
 
+      toolbar.crossrefIntegrityCache.set(normalizedDoi, result);
+
       return result;
     } catch (error) {
       const message = error && error.message ? error.message : "unknown";
       toolbar.addDebugLog("Crossref integrity check failed.", {
-        doi,
+        doi: normalizedDoi,
         error: message,
         stack: error && error.stack ? error.stack.slice(0, 1000) : ""
       });
       return {
-        doi,
+        doi: normalizedDoi,
         alerts: [],
         summary: "The Crossref integrity check could not be completed right now.",
         status: "error",
@@ -500,8 +507,10 @@
     requestsPerWindowMs: 3000
   };
 
-  toolbar.crossrefRequestQueue = Promise.resolve();
+  toolbar.crossrefStartQueue = Promise.resolve();
   toolbar.lastCrossrefRequestAt = 0;
+  toolbar.crossrefJsonCache = new Map();
+  toolbar.crossrefIntegrityCache = new Map();
 
   toolbar.getCrossrefRequestDelay = function() {
     if (toolbar.CROSSREF_CONFIG.politePool) {
@@ -535,16 +544,20 @@
         await new Promise((resolve) => setTimeout(resolve, waitTime));
       }
       toolbar.lastCrossrefRequestAt = Date.now();
-      return task();
     };
 
-    toolbar.crossrefRequestQueue = toolbar.crossrefRequestQueue.then(run, run);
-    return toolbar.crossrefRequestQueue;
+    const scheduledStart = toolbar.crossrefStartQueue.then(run, run);
+    toolbar.crossrefStartQueue = scheduledStart.then(() => undefined, () => undefined);
+    return scheduledStart.then(() => task());
   };
 
   toolbar.fetchCrossrefJson = function(path, params) {
     return toolbar.scheduleCrossrefRequest(async () => {
       const url = toolbar.buildCrossrefUrl(path, params);
+      if (toolbar.crossrefJsonCache.has(url)) {
+        return toolbar.crossrefJsonCache.get(url);
+      }
+
       const retryableStatuses = new Set([429, 500, 502, 503, 504]);
       let response = null;
       let data = null;
@@ -571,7 +584,12 @@
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
       }
 
-      return { url, response, data };
+      const result = { url, response, data };
+      if (response && response.ok) {
+        toolbar.crossrefJsonCache.set(url, result);
+      }
+
+      return result;
     });
   };
 
@@ -1275,7 +1293,7 @@
     panel.appendChild(progressContainer);
     panel.appendChild(textarea);
     panel.appendChild(actionBar);
-    toolbar.makeElementDraggable(panel, dragHandle);
+    toolbar.makeElementDraggable(panel, titleBar);
     toolbar.addDebugLog("Reference check panel opened.");
     toolbar.appendToPageRoot(panel);
   };

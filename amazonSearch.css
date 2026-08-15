@@ -32,11 +32,11 @@
   box-sizing: border-box;
   margin: 0 0 24px;
   padding: 20px;
-  border: 1px solid var(--umd-red);
-  border-radius: 16px;
+  border: 1px solid rgba(226, 24, 51, 0.18);
+  border-radius: 18px;
   background: linear-gradient(180deg, #ffffff 0%, var(--umd-surface) 100%);
   color: var(--umd-ink);
-  box-shadow: 0 2px 8px rgba(26, 26, 26, 0.08);
+  box-shadow: 0 18px 40px rgba(31, 41, 55, 0.12);
 }
 
 /*
@@ -266,9 +266,9 @@
 
 .umcp-amazon-catalog-panel__badge.is-unknown,
 .umcp-amazon-catalog-panel__badge.is-muted {
-  background: #2f3742;
-  color: var(--umd-white);
-  border-color: #1f2937;
+  background: var(--umd-neutral-bg);
+  color: var(--umd-neutral-fg);
+  border-color: var(--umd-border);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -295,7 +295,7 @@
 .umcp-amazon-catalog-panel__label {
   margin: 0;
   font-weight: 700;
-  color: var(--umd-black);
+  color: var(--umd-red-darker);
 }
 
 .umcp-amazon-catalog-panel__value {
@@ -312,8 +312,8 @@
   margin: 14px 0 0;
   padding: 10px 12px;
   border-left: 4px solid var(--umd-gold-dark);
-  border-radius: 8px;
-  background: #fffbea;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #ffffff 0%, var(--umd-surface-strong) 100%);
   color: var(--umd-black);
 }
 
@@ -329,7 +329,7 @@
 
 .umcp-amazon-catalog-panel__availability.is-unknown {
   border-left-color: var(--umd-gold-dark);
-  background: #fffbea;
+  background: linear-gradient(180deg, #ffffff 0%, var(--umd-surface-strong) 100%);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -366,7 +366,7 @@
 @media (max-width: 720px) {
   .umcp-amazon-catalog-panel {
     padding: 16px;
-    border-radius: 12px;
+    border-radius: 14px;
   }
 
   .umcp-amazon-catalog-panel__header {
