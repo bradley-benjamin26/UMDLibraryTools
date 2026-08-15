@@ -50,9 +50,56 @@
     return toolbar.getStoredProxyTargetSync();
   };
 
+  toolbar.getProxyAccessState = function() {
+    if (!toolbar.isCurrentPageOnProxyHost()) {
+      return false;
+    }
+
+    try {
+      const pageText = (document.body ? document.body.innerText : "") || "";
+      const pageUrl = window.location.href || "";
+      const combinedText = `${pageUrl} ${pageText}`.toLowerCase();
+      const accessDeniedSignals = [
+        "access denied",
+        "access unavailable",
+        "not authorized",
+        "not available",
+        "not authorized to access this resource",
+        "please sign in",
+        "sign in to continue",
+        "login required",
+        "subscription required",
+        "restricted access",
+        "institutional access required"
+      ];
+      const accessIndicators = [
+        "full text",
+        "download pdf",
+        "pdf",
+        "article",
+        "journal",
+        "chapter",
+        "book",
+        "abstract",
+        "read online",
+        "view pdf"
+      ];
+
+      const hasDeniedSignal = accessDeniedSignals.some((signal) => combinedText.includes(signal));
+      if (hasDeniedSignal) {
+        return false;
+      }
+
+      const hasAccessIndicator = accessIndicators.some((signal) => combinedText.includes(signal));
+      return hasAccessIndicator || /\/proxy-um\.|\/login\?url=|\/login\?qurl=/i.test(pageUrl);
+    } catch (error) {
+      return false;
+    }
+  };
+
   toolbar.getProxySuccessState = function() {
     if (toolbar.isCurrentPageOnProxyHost()) {
-      return true;
+      return toolbar.getProxyAccessState();
     }
 
     try {
@@ -182,26 +229,24 @@
   };
 
   toolbar.updateProxyButtonState = function(button, url) {
+    const isProxyHostPage = toolbar.isCurrentPageOnProxyHost();
+    const hasProxyAccess = isProxyHostPage ? toolbar.getProxyAccessState() : false;
     const hasProxySuccess = toolbar.getProxySuccessState();
-    const nextText = hasProxySuccess ? "Proxy successful" : toolbar.isAlreadyProxied(url) ? "Already through UMD proxy" : "Open with UMD proxy";
-    toolbar.logProxyState("before updateProxyButtonState", { url, nextText, buttonText: button && button.textContent, hasProxySuccess });
+    const nextText = isProxyHostPage
+      ? (hasProxyAccess ? "Proxy successful" : "Access unavailable")
+      : (hasProxySuccess ? "Proxy successful" : toolbar.isAlreadyProxied(url) ? "Already through UMD proxy" : "Open with UMD proxy");
+
+    toolbar.logProxyState("before updateProxyButtonState", { url, nextText, buttonText: button && button.textContent, hasProxySuccess, hasProxyAccess, isProxyHostPage });
     if (button) {
       button.textContent = nextText;
-      button.disabled = hasProxySuccess;
-      button.setAttribute("aria-disabled", String(hasProxySuccess));
-      if (hasProxySuccess) {
-        button.style.background = "#2e7d32";
-        button.style.color = "#ffffff";
-        button.style.borderColor = "#2e7d32";
-        button.style.cursor = "default";
-      } else {
-        button.style.background = "";
-        button.style.color = "";
-        button.style.borderColor = "";
-        button.style.cursor = "pointer";
-      }
+      button.disabled = false;
+      button.setAttribute("aria-disabled", "false");
+      button.style.background = "";
+      button.style.color = "";
+      button.style.borderColor = "";
+      button.style.cursor = "pointer";
     }
-    toolbar.logProxyState("after updateProxyButtonState", { url, nextText, buttonText: button && button.textContent, hasProxySuccess });
+    toolbar.logProxyState("after updateProxyButtonState", { url, nextText, buttonText: button && button.textContent, hasProxySuccess, hasProxyAccess, isProxyHostPage });
   };
 
   toolbar.createProxyButton = function(container, liveRegion) {

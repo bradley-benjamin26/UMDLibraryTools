@@ -41,11 +41,14 @@
 
 .umcp-library-toolbar-button,
 .umcp-library-summary-close {
-  border: 1px solid #b51228;
-  border-radius: 6px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
   color: #ffffff;
   font-family: Arial, sans-serif;
   cursor: pointer;
+  box-shadow: 0 8px 18px rgba(31, 41, 55, 0.12);
 }
 
 .umcp-library-toolbar-button-help-tone {
@@ -180,35 +183,34 @@
 }
 
 .umcp-library-toolbar-button {
-  background: #e21833;
+  background: linear-gradient(180deg, #e21833 0%, #c3122c 100%);
   color: #ffffff;
   padding: 8px 10px;
   font-size: 13px;
-  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.12);
 }
 
 .umcp-library-toolbar-button:hover {
-  background: #b51228;
+  background: linear-gradient(180deg, #c3122c 0%, #a40f24 100%);
 }
 
 .umcp-library-summary-toggle-button--active {
-  background: #8f0d22 !important;
-  border-color: #680814 !important;
+  background: linear-gradient(180deg, #c3122c 0%, #8f0d22 100%) !important;
+  border-color: #8f0d22 !important;
   box-shadow: 0 0 0 2px rgba(255, 210, 0, 0.18), 0 2px 6px rgba(26, 26, 26, 0.18);
 }
 
 .umcp-library-summary-toggle-button--active:hover {
-  background: #720b1a !important;
+  background: linear-gradient(180deg, #a40f24 0%, #720b1a 100%) !important;
 }
 
 .umcp-library-toolbar-button-secondary {
-  background: #000000;
-  border-color: #000000;
-  color: #ffffff;
+  background: #ffffff;
+  border-color: rgba(177, 17, 40, 0.32);
+  color: #b11128;
 }
 
 .umcp-library-toolbar-button-secondary:hover {
-  background: #333333;
+  background: rgba(226, 24, 51, 0.06);
 }
 
 /* =========================
@@ -241,14 +243,15 @@
 }
 
 .umcp-library-summary-close {
-  background: #000000;
-  border-color: #000000;
+  background: #ffffff;
+  border-color: rgba(177, 17, 40, 0.32);
   padding: 6px 10px;
   font-size: 12px;
+  color: #4b5563;
 }
 
 .umcp-library-summary-close:hover {
-  background: #333333;
+  background: #f3f4f6;
 }
 
 .umcp-library-summary-empty {

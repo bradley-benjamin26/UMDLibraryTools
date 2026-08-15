@@ -1,3 +1,17 @@
+:root {
+  --umd-red: #e21833;
+  --umd-red-dark: #b11128;
+  --umd-gold: #ffd200;
+  --umd-gold-dark: #c8a600;
+  --umd-dark: #454545;
+  --umd-ink: #1f2937;
+  --umd-border: #d0d7de;
+  --umd-surface: #ffffff;
+  --umd-surface-soft: #f8fafc;
+  --umd-surface-warm: #fff9e6;
+  --umd-focus: #005fcc;
+}
+
 #umcp-library-inline-tools,
 #umcp-library-toolbar-show-button,
 .umcp-library-toolbar-button,
@@ -10,41 +24,34 @@
 }
 
 #umcp-library-inline-tools {
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 16px;
-  padding: 8px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(226, 24, 51, 0.18);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.96) 100%);
+  box-shadow: 0 18px 40px rgba(31, 41, 55, 0.18);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   cursor: move;
 }
 
 .umcp-library-toolbar-grab-handle {
-  width: 56px;
-  height: 22px;
+  width: 64px;
+  height: 24px;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(226, 24, 51, 0.15), rgba(255, 210, 0, 0.18), rgba(17, 17, 17, 0.12));
-  border: 1px solid rgba(17, 17, 17, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
-  margin: 0 auto 6px;
-  pointer-events: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #111111;
-  user-select: none;
-}
-
-.umcp-library-toolbar-grab-icon {
-  width: 18px;
-  height: 18px;
-  display: block;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  fill: none;
+  margin: 0 auto 2px;
+  pointer-events: none;
+  color: var(--umd-dark);
+  font: 700 15px/1 Arial, sans-serif;
+  letter-spacing: 0.08em;
+  background: linear-gradient(90deg, rgba(226, 24, 51, 0.16), rgba(255, 210, 0, 0.38));
+  border: 1px solid rgba(226, 24, 51, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .umcp-library-toolbar-button {
@@ -53,227 +60,235 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
+  gap: 6px;
+  min-height: 38px;
   padding: 8px 12px;
-  font: 600 12px/1 Arial, sans-serif;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
-  outline: none;
+  border-radius: 999px;
   border: 1px solid transparent;
+  font: 700 12px/1 Arial, sans-serif;
+  cursor: pointer;
   text-decoration: none;
   white-space: nowrap;
+  box-shadow: 0 8px 18px rgba(31, 41, 55, 0.12);
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.umcp-library-toolbar-button:hover {
+  transform: translateY(-1px);
+}
+
+.umcp-library-toolbar-button:active {
+  transform: translateY(0);
 }
 
 .umcp-library-toolbar-button:focus-visible {
-  outline: 3px solid #003a8c;
+  outline: 3px solid var(--umd-focus);
   outline-offset: 2px;
   box-shadow: 0 0 0 2px rgba(255, 210, 0, 0.45);
 }
 
+.umcp-library-toolbar-button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .umcp-library-toolbar-button--proxy {
-  background: #e21833;
+  background: linear-gradient(180deg, #e21833 0%, #c3122c 100%);
   color: #ffffff;
-  border-color: #b10d25;
+  border-color: #b11128;
 }
 
 .umcp-library-toolbar-button--proxy:hover {
-  background: #c8132d;
+  background: linear-gradient(180deg, #c3122c 0%, #a40f24 100%);
   color: #ffffff;
 }
 
 .umcp-library-toolbar-button--search {
   background: #ffffff;
-  color: #111111;
-  border-color: #e21833;
+  color: #b11128;
+  border-color: rgba(177, 17, 40, 0.35);
 }
 
 .umcp-library-toolbar-button--search:hover {
-  background: #fff7cf;
-  color: #111111;
+  background: rgba(226, 24, 51, 0.06);
+  color: #8f0d22;
 }
 
 .umcp-library-toolbar-button--help {
-  background: #ffd200;
-  color: #111111;
-  border-color: #d8a900;
+  background: linear-gradient(180deg, #ffd200 0%, #f4c400 100%);
+  color: #1f2937;
+  border-color: #c8a600;
 }
 
 .umcp-library-toolbar-button--help:hover {
-  background: #f3c300;
-  color: #111111;
-}
-
-.umcp-library-toolbar-button--integrity {
-  background: #111111;
-  color: #ffffff;
-  border-color: #111111;
-}
-
-.umcp-library-toolbar-button--integrity:hover {
-  background: #000000;
-  color: #ffffff;
+  background: linear-gradient(180deg, #f4c400 0%, #e8b800 100%);
+  color: #111827;
 }
 
 .umcp-library-toolbar-button--cite {
   background: #ffffff;
-  color: #111111;
-  border-color: #111111;
+  color: #b11128;
+  border-color: rgba(226, 24, 51, 0.44);
 }
 
 .umcp-library-toolbar-button--cite:hover {
-  background: #f3f3f3;
-  color: #111111;
+  background: rgba(255, 210, 0, 0.16);
+  color: #8f0d22;
+}
+
+.umcp-library-toolbar-button--integrity {
+  background: linear-gradient(180deg, #e21833 0%, #c3122c 100%);
+  color: #ffffff;
+  border-color: #b11128;
+}
+
+.umcp-library-toolbar-button--integrity:hover {
+  background: linear-gradient(180deg, #c3122c 0%, #a40f24 100%);
+  color: #ffffff;
 }
 
 .umcp-library-toolbar-button--skip {
   background: #ffffff;
-  color: #000000;
+  color: #4b5563;
   border-color: #d0d7de;
 }
 
 .umcp-library-toolbar-button--skip:hover {
   background: #f3f4f6;
-  color: #000000;
+  color: #1f2937;
 }
 
 .umcp-library-search-form {
   display: flex;
   gap: 6px;
   align-items: center;
-  background: #ffffff;
-  border: 1px solid #ffd200;
+  padding: 5px 6px 5px 10px;
   border-radius: 999px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
-  padding: 4px 6px 4px 10px;
+  border: 1px solid rgba(226, 24, 51, 0.28);
+  background: linear-gradient(180deg, #ffffff 0%, #fefefe 100%);
+  box-shadow: 0 8px 18px rgba(31, 41, 55, 0.08);
 }
 
 .umcp-library-search-input {
-  border: none;
-  outline: none;
-  font: 13px/1 Arial, sans-serif;
   width: 200px;
   padding: 8px 0;
-  color: #000000;
+  border: none;
+  outline: none;
   background: transparent;
+  color: #111827;
+  font: 13px/1 Arial, sans-serif;
 }
 
 .umcp-library-search-submit {
-  border: 1px solid #e21833;
-  background: #ffd200;
-  color: #000000;
-  border-radius: 999px;
   padding: 8px 12px;
-  font: 600 12px/1 Arial, sans-serif;
+  border-radius: 999px;
+  border: 1px solid #b11128;
+  background: linear-gradient(180deg, #e21833 0%, #c3122c 100%);
+  color: #ffffff;
+  font: 700 12px/1 Arial, sans-serif;
   cursor: pointer;
 }
 
-.umcp-library-citation-panel {
+.umcp-library-search-submit:hover {
+  background: linear-gradient(180deg, #c3122c 0%, #a40f24 100%);
+}
+
+.umcp-library-citation-panel,
+.umcp-library-integrity-panel {
   position: fixed;
   right: 18px;
-  top: 250px;
-  width: min(340px, calc(100vw - 28px));
-  max-height: 320px;
-  overflow: hidden;
-  background: #ffffff;
-  border: 1px solid #d0d7de;
-  border-radius: 12px;
-  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
+  width: min(420px, calc(100vw - 28px));
+  max-height: min(520px, calc(100vh - 120px));
+  overflow: auto;
   z-index: 2147483647;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(31, 41, 55, 0.12);
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
+  box-shadow: 0 20px 42px rgba(31, 41, 55, 0.18);
   font: 13px/1.45 Arial, sans-serif;
   color: #111827;
-  transition: max-height 0.18s ease, transform 0.18s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.umcp-library-citation-panel {
+  top: 240px;
+  border-top: 5px solid var(--umd-red);
+}
+
+.umcp-library-integrity-panel {
+  top: 400px;
+  border-top: 5px solid var(--umd-gold);
 }
 
 .umcp-library-citation-panel button,
 .umcp-library-citation-panel select,
-.umcp-library-citation-panel textarea {
+.umcp-library-citation-panel textarea,
+.umcp-library-integrity-panel button,
+.umcp-library-integrity-panel textarea {
   box-sizing: border-box;
   font: inherit;
 }
 
-.umcp-library-citation-header {
-  font: 700 14px/1.2 Arial, sans-serif;
-  color: #111111;
+.umcp-library-citation-header,
+.umcp-library-integrity-header {
+  font: 800 15px/1.2 Arial, sans-serif;
+  color: #b11128;
+  letter-spacing: 0.01em;
 }
 
 .umcp-library-citation-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .umcp-library-citation-actions {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .umcp-library-citation-preview-wrapper {
   display: none;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .umcp-library-citation-preview-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
 }
 
 .umcp-library-citation-select {
   border: 1px solid #d0d7de;
-  border-radius: 8px;
-  padding: 7px 8px;
-  font: 12px/1.2 Arial, sans-serif;
+  border-radius: 10px;
+  padding: 8px 10px;
   background: #ffffff;
+  color: #111827;
+  font: 13px/1.2 Arial, sans-serif;
 }
 
 .umcp-library-citation-output {
   width: 100%;
-  min-height: 120px;
+  min-height: 160px;
   resize: vertical;
   border: 1px solid #d0d7de;
-  border-radius: 8px;
-  padding: 8px 10px;
-  font: 11px/1.5 Arial, sans-serif;
-  color: #111827;
+  border-radius: 12px;
+  padding: 10px 12px;
   background: #f9fafb;
+  color: #111827;
+  font: 12px/1.5 Arial, sans-serif;
 }
 
 .umcp-library-citation-actions .umcp-library-toolbar-button,
 .umcp-library-citation-preview-actions .umcp-library-toolbar-button {
   width: 100%;
-  padding: 7px 10px;
+  padding: 8px 12px;
   font-size: 12px;
-}
-
-.umcp-library-integrity-panel {
-  position: fixed;
-  right: 18px;
-  top: 420px;
-  width: min(320px, calc(100vw - 28px));
-  max-height: 320px;
-  overflow: auto;
-  background: #ffffff;
-  border: 1px solid #d0d7de;
-  border-radius: 12px;
-  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
-  z-index: 2147483647;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font: 13px/1.45 Arial, sans-serif;
-  color: #111827;
-}
-
-.umcp-library-integrity-header {
-  font: 700 14px/1.2 Arial, sans-serif;
-  color: #7b2cbf;
 }
 
 .umcp-library-integrity-summary {
@@ -287,4 +302,36 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+@media (max-width: 640px) {
+  #umcp-library-inline-tools {
+    width: min(100vw - 24px, 360px);
+  }
+
+  .umcp-library-toolbar-button,
+  .umcp-library-search-submit {
+    width: 100%;
+  }
+
+  .umcp-library-search-form {
+    flex-direction: column;
+    align-items: stretch;
+    border-radius: 16px;
+    padding: 10px;
+  }
+
+  .umcp-library-search-input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #d0d7de;
+    border-radius: 10px;
+    background: #ffffff;
+  }
+
+  .umcp-library-citation-panel,
+  .umcp-library-integrity-panel {
+    right: 12px;
+    width: min(100vw - 24px, 420px);
+  }
 }

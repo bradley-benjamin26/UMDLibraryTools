@@ -227,11 +227,7 @@
     grabHandle.className = "umcp-library-toolbar-grab-handle";
     grabHandle.setAttribute("aria-hidden", "true");
     grabHandle.title = "Drag to move the toolbar";
-    grabHandle.innerHTML = `
-      <svg class="umcp-library-toolbar-grab-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" focusable="false">
-        <path d="M12 2v5M12 17v5M2 12h5M17 12h5M7.5 7.5l4.5-4.5 4.5 4.5M7.5 16.5l4.5 4.5 4.5-4.5M16.5 7.5l4.5 4.5-4.5 4.5M7.5 7.5L3 12l4.5 4.5" />
-      </svg>
-    `;
+    grabHandle.textContent = "⋮⋮";
     container.appendChild(grabHandle);
 
     toolbar.makeToolbarDraggable(container);
@@ -279,6 +275,49 @@
     container.addEventListener("pointermove", handlePointerMove);
     container.addEventListener("pointerup", handlePointerUp);
     container.addEventListener("pointerleave", handlePointerUp);
+  };
+
+  toolbar.makeElementDraggable = function(element, dragHandle) {
+    if (!element || !dragHandle || element.dataset.dragBound === "true") return;
+    element.dataset.dragBound = "true";
+
+    let dragging = false;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+    const handlePointerDown = (event) => {
+      if (event.target.closest("button, input, select, textarea, form")) {
+        return;
+      }
+
+      dragging = true;
+      const rect = element.getBoundingClientRect();
+      offsetX = event.clientX - rect.left;
+      offsetY = event.clientY - rect.top;
+      element.style.transition = "none";
+      dragHandle.setPointerCapture && dragHandle.setPointerCapture(event.pointerId);
+    };
+
+    const handlePointerMove = (event) => {
+      if (!dragging) return;
+      const nextLeft = clamp(event.clientX - offsetX, 12, Math.max(12, window.innerWidth - element.offsetWidth - 12));
+      const nextTop = clamp(event.clientY - offsetY, 12, Math.max(12, window.innerHeight - element.offsetHeight - 12));
+      element.style.left = `${nextLeft}px`;
+      element.style.top = `${nextTop}px`;
+      element.style.right = "auto";
+    };
+
+    const handlePointerUp = () => {
+      dragging = false;
+      element.style.transition = "box-shadow 0.15s ease, transform 0.15s ease";
+    };
+
+    dragHandle.addEventListener("pointerdown", handlePointerDown);
+    dragHandle.addEventListener("pointermove", handlePointerMove);
+    dragHandle.addEventListener("pointerup", handlePointerUp);
+    dragHandle.addEventListener("pointerleave", handlePointerUp);
   };
 
   toolbar.createLiveRegion = function() {

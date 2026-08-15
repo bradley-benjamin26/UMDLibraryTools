@@ -1,3 +1,14 @@
+:root {
+  --umd-red: #e21833;
+  --umd-red-dark: #b11128;
+  --umd-gold: #ffd200;
+  --umd-gold-dark: #c8a600;
+  --umd-dark: #454545;
+  --umd-ink: #1f2937;
+  --umd-border: #d0d7de;
+  --umd-focus: #005fcc;
+}
+
 #umcp-library-inline-tools,
 #umcp-library-toolbar-show-button,
 .umcp-library-toolbar-button,
@@ -10,131 +21,195 @@
 }
 
 .umcp-library-toolbar-button {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 8px 12px;
   border-radius: 999px;
-  padding: 10px 14px;
-  font: 600 13px/1 Arial, sans-serif;
-  cursor: pointer;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-  outline: none;
   border: 1px solid transparent;
+  font: 700 12px/1 Arial, sans-serif;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: 0 8px 18px rgba(31, 41, 55, 0.12);
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.umcp-library-toolbar-button:hover {
+  transform: translateY(-1px);
+}
+
+.umcp-library-toolbar-button:active {
+  transform: translateY(0);
 }
 
 .umcp-library-toolbar-button:focus-visible {
-  outline: 3px solid #003a8c;
+  outline: 3px solid var(--umd-focus);
   outline-offset: 2px;
   box-shadow: 0 0 0 2px rgba(255, 210, 0, 0.45);
 }
 
+.umcp-library-toolbar-button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .umcp-library-toolbar-button--proxy {
-  background: #e21833;
+  background: linear-gradient(180deg, #e21833 0%, #c3122c 100%);
   color: #ffffff;
-  border-color: #e21833;
+  border-color: #b11128;
 }
 
 .umcp-library-toolbar-button--proxy:hover {
-  background: #b6122a;
+  background: linear-gradient(180deg, #c3122c 0%, #a40f24 100%);
   color: #ffffff;
 }
 
 .umcp-library-toolbar-button--search {
   background: #ffffff;
-  color: #000000;
-  border-color: #e21833;
+  color: #b11128;
+  border-color: rgba(177, 17, 40, 0.35);
 }
 
 .umcp-library-toolbar-button--search:hover {
-  background: #fff7c7;
-  color: #000000;
+  background: rgba(226, 24, 51, 0.06);
+  color: #8f0d22;
 }
 
 .umcp-library-toolbar-button--help {
-  background: #ffd200;
-  color: #000000;
-  border-color: #ad7231;
+  background: linear-gradient(180deg, #ffd200 0%, #f4c400 100%);
+  color: #1f2937;
+  border-color: #c8a600;
 }
 
 .umcp-library-toolbar-button--help:hover {
-  background: #f2c900;
-  color: #000000;
+  background: linear-gradient(180deg, #f4c400 0%, #e8b800 100%);
+  color: #111827;
 }
 
 .umcp-library-toolbar-button--cite {
-  background: #1a3f6b;
-  color: #ffffff;
-  border-color: #1a3f6b;
+  background: #ffffff;
+  color: #b11128;
+  border-color: rgba(226, 24, 51, 0.44);
 }
 
 .umcp-library-toolbar-button--cite:hover {
-  background: #16385e;
+  background: rgba(255, 210, 0, 0.16);
+  color: #8f0d22;
+}
+
+.umcp-library-toolbar-button--integrity {
+  background: linear-gradient(180deg, #e21833 0%, #c3122c 100%);
+  color: #ffffff;
+  border-color: #b11128;
+}
+
+.umcp-library-toolbar-button--integrity:hover {
+  background: linear-gradient(180deg, #c3122c 0%, #a40f24 100%);
   color: #ffffff;
 }
 
 .umcp-library-toolbar-button--skip {
   background: #ffffff;
-  color: #000000;
+  color: #4b5563;
   border-color: #d0d7de;
 }
 
 .umcp-library-toolbar-button--skip:hover {
   background: #f3f4f6;
-  color: #000000;
+  color: #1f2937;
 }
 
 .umcp-library-search-form {
   display: flex;
   gap: 6px;
   align-items: center;
-  background: #ffffff;
-  border: 1px solid #ffd200;
+  padding: 5px 6px 5px 10px;
   border-radius: 999px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
-  padding: 4px 6px 4px 10px;
+  border: 1px solid rgba(226, 24, 51, 0.28);
+  background: linear-gradient(180deg, #ffffff 0%, #fefefe 100%);
+  box-shadow: 0 8px 18px rgba(31, 41, 55, 0.08);
 }
 
 .umcp-library-search-input {
-  border: none;
-  outline: none;
-  font: 13px/1 Arial, sans-serif;
   width: 200px;
   padding: 8px 0;
-  color: #000000;
+  border: none;
+  outline: none;
   background: transparent;
+  color: #111827;
+  font: 13px/1 Arial, sans-serif;
 }
 
 .umcp-library-search-submit {
-  border: 1px solid #e21833;
-  background: #ffd200;
-  color: #000000;
-  border-radius: 999px;
   padding: 8px 12px;
-  font: 600 12px/1 Arial, sans-serif;
+  border-radius: 999px;
+  border: 1px solid #b11128;
+  background: linear-gradient(180deg, #e21833 0%, #c3122c 100%);
+  color: #ffffff;
+  font: 700 12px/1 Arial, sans-serif;
   cursor: pointer;
 }
 
-.umcp-library-citation-panel {
+.umcp-library-search-submit:hover {
+  background: linear-gradient(180deg, #c3122c 0%, #a40f24 100%);
+}
+
+.umcp-library-citation-panel,
+.umcp-library-integrity-panel {
   position: fixed;
   right: 18px;
-  top: 250px;
-  width: min(380px, calc(100vw - 36px));
-  max-height: min(500px, calc(100vh - 120px));
+  width: min(420px, calc(100vw - 28px));
+  max-height: min(520px, calc(100vh - 120px));
   overflow: auto;
-  background: #ffffff;
-  border: 1px solid #d0d7de;
-  border-radius: 14px;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.2);
   z-index: 2147483647;
   padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(31, 41, 55, 0.12);
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
+  box-shadow: 0 20px 42px rgba(31, 41, 55, 0.18);
+  font: 13px/1.45 Arial, sans-serif;
+  color: #111827;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  font: 13px/1.45 Arial, sans-serif;
-  color: #111827;
 }
 
-.umcp-library-citation-header {
-  font: 700 14px/1.2 Arial, sans-serif;
-  color: #1a3f6b;
+.umcp-library-citation-panel {
+  top: 240px;
+  border-top: 5px solid var(--umd-red);
+}
+
+.umcp-library-integrity-panel {
+  top: 400px;
+  border-top: 5px solid var(--umd-gold);
+}
+
+.umcp-library-citation-panel button,
+.umcp-library-citation-panel select,
+.umcp-library-citation-panel textarea,
+.umcp-library-integrity-panel button,
+.umcp-library-integrity-panel textarea {
+  box-sizing: border-box;
+  font: inherit;
+}
+
+.umcp-library-citation-header,
+.umcp-library-integrity-header {
+  font: 800 15px/1.2 Arial, sans-serif;
+  color: #b11128;
+  letter-spacing: 0.01em;
+}
+
+.umcp-library-citation-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .umcp-library-citation-actions {
@@ -144,17 +219,23 @@
 }
 
 .umcp-library-citation-preview-wrapper {
-  display: flex;
+  display: none;
   flex-direction: column;
+  gap: 8px;
+}
+
+.umcp-library-citation-preview-actions {
+  display: flex;
   gap: 8px;
 }
 
 .umcp-library-citation-select {
   border: 1px solid #d0d7de;
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 8px 10px;
-  font: 13px/1.2 Arial, sans-serif;
   background: #ffffff;
+  color: #111827;
+  font: 13px/1.2 Arial, sans-serif;
 }
 
 .umcp-library-citation-output {
@@ -162,15 +243,44 @@
   min-height: 160px;
   resize: vertical;
   border: 1px solid #d0d7de;
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 10px 12px;
-  font: 12px/1.5 Arial, sans-serif;
-  color: #111827;
   background: #f9fafb;
+  color: #111827;
+  font: 12px/1.5 Arial, sans-serif;
 }
 
-.umcp-library-citation-actions .umcp-library-toolbar-button {
+.umcp-library-citation-actions .umcp-library-toolbar-button,
+.umcp-library-citation-preview-actions .umcp-library-toolbar-button {
   width: 100%;
   padding: 8px 12px;
   font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .umcp-library-toolbar-button,
+  .umcp-library-search-submit {
+    width: 100%;
+  }
+
+  .umcp-library-search-form {
+    flex-direction: column;
+    align-items: stretch;
+    border-radius: 16px;
+    padding: 10px;
+  }
+
+  .umcp-library-search-input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #d0d7de;
+    border-radius: 10px;
+    background: #ffffff;
+  }
+
+  .umcp-library-citation-panel,
+  .umcp-library-integrity-panel {
+    right: 12px;
+    width: min(100vw - 24px, 420px);
+  }
 }
