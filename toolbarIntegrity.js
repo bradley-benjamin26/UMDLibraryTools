@@ -104,32 +104,40 @@
       alerts.push({ type, label, detail });
     };
 
-    if (message.retraction === true || message.retraction === "true") {
-      addAlert("retraction", "Retraction", "Crossref marks this work as retracted.");
-    }
-
-    const updateTypes = Array.isArray(message["update-to"]) ? message["update-to"] : [];
-    updateTypes.forEach((entry) => {
-      const type = toolbar.cleanText(entry && (entry.type || entry["update-type"] || "")).toLowerCase();
-      const date = toolbar.cleanText(entry && (entry.date || ""));
-      if (!type) return;
-
+    const addUpdateAlert = (rawType, rawDate, subject) => {
+      const type = rawType.toLowerCase();
+      const when = rawDate ? ` dated ${rawDate}` : "";
+      const noun = subject === "notice" ? "this DOI is a notice of" : "Crossref reports";
       if (type.includes("retraction")) {
-        addAlert("retraction", "Retraction", date ? `Crossref reports a retraction dated ${date}.` : "Crossref reports a retraction.");
+        addAlert("retraction", "Retraction", `${noun} a retraction${when}.`);
+      } else if (type.includes("expression") || type.includes("concern")) {
+        addAlert("expression-of-concern", "Expression of concern", `${noun} an expression of concern${when}.`);
+      } else if (type.includes("withdrawal")) {
+        addAlert("withdrawal", "Withdrawal", `${noun} a withdrawal${when}.`);
+      } else if (type.includes("correction") || type.includes("erratum") || type.includes("corrigendum")) {
+        addAlert("correction", "Correction", `${noun} a correction${when}.`);
       }
+    };
 
-      if (type.includes("expression") || type.includes("concern")) {
-        addAlert("expression-of-concern", "Expression of concern", date ? `Crossref reports an expression of concern dated ${date}.` : "Crossref reports an expression of concern.");
-      }
+    // "updated-by" marks this work as the target of a retraction, correction, etc.
+    // (includes Retraction Watch data); "update-to" means this DOI is itself such a notice.
+    const readDate = (entry) => {
+      const updated = entry && entry.updated;
+      const dateTime = updated && (updated["date-time"] || updated.timestamp);
+      if (typeof dateTime === "string") return dateTime.slice(0, 10);
+      const parts = updated && updated["date-parts"] && updated["date-parts"][0];
+      return Array.isArray(parts) ? parts.join("-") : toolbar.cleanText(entry && entry.date || "");
+    };
 
-      if (type.includes("correction")) {
-        addAlert("correction", "Correction", date ? `Crossref reports a correction dated ${date}.` : "Crossref reports a correction.");
-      }
+    const collect = (list, subject) => {
+      (Array.isArray(list) ? list : []).forEach((entry) => {
+        const type = toolbar.cleanText(entry && (entry.type || entry.label || entry["update-type"] || ""));
+        if (type) addUpdateAlert(type, readDate(entry), subject);
+      });
+    };
 
-      if (type.includes("withdrawal")) {
-        addAlert("withdrawal", "Withdrawal", date ? `Crossref reports a withdrawal dated ${date}.` : "Crossref reports a withdrawal.");
-      }
-    });
+    collect(message["updated-by"], "target");
+    collect(message["update-to"], "notice");
 
     const title = toolbar.cleanText(message.title && message.title[0] ? message.title[0] : "");
     if (!alerts.length) {
@@ -501,7 +509,7 @@
   };
 
   toolbar.CROSSREF_CONFIG = {
-    mailto: "bbradle1@umd.edu",
+    mailto: "",
     politePool: true,
     requestsPerWindowCount: 10,
     requestsPerWindowMs: 3000
@@ -531,7 +539,10 @@
       }
     });
 
-    url.searchParams.set("mailto", toolbar.CROSSREF_CONFIG.mailto);
+    const mailto = toolbar.userEmail || toolbar.CROSSREF_CONFIG.mailto;
+    if (mailto) {
+      url.searchParams.set("mailto", mailto);
+    }
     return url.toString();
   };
 
