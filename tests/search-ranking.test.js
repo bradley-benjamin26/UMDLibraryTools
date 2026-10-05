@@ -27,3 +27,37 @@ assert.ok(ranked[0].matchScore > ranked[1].matchScore);
 assert.equal(SI.findDoi("https://doi.org/10.1177/00472875241289565."), "10.1177/00472875241289565");
 
 console.log("search ranking checks passed");
+
+const plan = SI.buildSearchPlan("lord of the rings and catholicism", { sourceType: "google" });
+assert.ok(plan.candidates.length > 0);
+assert.ok(plan.candidates.every((c) => !c.cql.includes("alma.any=")), "alma.any is rejected by the SRU endpoint");
+assert.ok(plan.candidates.some((c) => c.cql.includes("alma.all_for_ui=")), "keyword route uses alma.all_for_ui");
+console.log("search plan index checks passed");
+
+const auto = SI.analyzeQuery("lord of the rings and catholicism", { sourceType: "google" });
+assert.equal(auto.searchIntent, "subject", "'X and Y' topic queries default to subject");
+assert.equal(auto.intentOverridden, false);
+assert.equal(SI.analyzeQuery("war and peace", { sourceType: "google" }).searchIntent, "known-item", "short titles stay known-item");
+const forced = SI.buildSearchPlan("lord of the rings and catholicism", { sourceType: "google", intentOverride: "known-item" });
+assert.equal(forced.analysis.searchIntent, "known-item");
+assert.equal(forced.analysis.detectedIntent, "subject");
+assert.equal(forced.analysis.intentOverridden, true);
+assert.equal(SI.analyzeQuery("anything", { intentOverride: "bogus" }).intentOverridden, false, "unknown overrides are ignored");
+console.log("search intent checks passed");
+
+const subjectPlan = SI.buildSearchPlan("lord of the rings and catholicism", { sourceType: "google" });
+assert.equal(subjectPlan.analysis.searchIntent, "subject");
+assert.ok(subjectPlan.candidates.every((c) => !/alma\.subject=/.test(c.cql)), "alma.subject (singular) matches the whole catalog");
+assert.ok(subjectPlan.candidates[0].cql.includes('alma.subjects="catholic*"'), "word stems are truncated");
+assert.ok(subjectPlan.candidates.length > 4, "relaxed routes follow the strict one");
+const keywordPlan = SI.buildSearchPlan("lord of the rings and catholicism", { sourceType: "google", intentOverride: "keyword" });
+assert.ok(keywordPlan.candidates[0].cql.includes('alma.all_for_ui="catholic*"'));
+assert.ok(keywordPlan.candidates.length >= 4, "keyword adds leave-one-out routes");
+assert.ok(!keywordPlan.candidates.some((c) => c.routeType === "title"), "keyword intent skips the exact title phrase");
+
+const tiered = SI.rankAndDedupeResults([
+  { title: "Loose match about rings", author: "A", routeTier: 2 },
+  { title: "Tolkien and Catholicism", author: "B", routeTier: 0 }
+], "tolkien catholicism", { tiered: true });
+assert.equal(tiered[0].title, "Tolkien and Catholicism", "stricter routes rank first");
+console.log("broad search plan checks passed");

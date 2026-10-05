@@ -24,6 +24,7 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
     maxResults: 5,
     fetchRecords: 10,
     strongMatchScore: 0.6,
+    maxUsefulHits: 3000,
     inlineBadgeMinScore: 0.8,
     maxInlineLookups: 10,
     inlineConcurrency: 2,
@@ -68,6 +69,9 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
     title: "umcp-google-catalog-panel__title",
     subtitle: "umcp-google-catalog-panel__subtitle",
     summary: "umcp-google-catalog-panel__summary",
+    intent: "umcp-google-catalog-panel__intent",
+    intentLabel: "umcp-google-catalog-panel__intent-label",
+    intentButton: "umcp-google-catalog-panel__intent-button",
     actions: "umcp-google-catalog-panel__actions",
     actionLink: "umcp-google-catalog-panel__action-link",
     toggleButton: "umcp-google-catalog-panel__toggle-button",
@@ -125,6 +129,8 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
     lastRenderedQuery: "",
     lastRenderedSource: "",
     activeRequestToken: 0,
+    intentOverride: "",
+    forceRefresh: false,
     historyListenersInstalled: false
   };
 
@@ -514,11 +520,13 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
     const numberOfRecordsNode = xml.querySelector("numberOfRecords");
     const numberOfRecords = Number.parseInt((numberOfRecordsNode && numberOfRecordsNode.textContent) || "0", 10);
     if (!numberOfRecords) {
-      return [];
+      return Object.assign([], { total: 0 });
     }
 
-    return Array.from(xml.querySelectorAll("recordData record, recordData > record"))
+    const results = Array.from(xml.querySelectorAll("recordData record, recordData > record"))
       .map((node) => recordToResult(node));
+    results.total = numberOfRecords;
+    return results;
   }
 
   function getAvailabilityRank(result) {
@@ -532,7 +540,7 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
   async function fetchCatalogResults(query, context = {}) {
   const plan = buildSearchPlan(query, context);
   const normalizedQuery = (plan.analysis && plan.analysis.cleanedQuery) || sanitizeQuery(query, context);
-  const cacheKey = `${context.sourceType || "google"}::${normalizedQuery.toLowerCase()}`;
+  const cacheKey = `${context.sourceType || "google"}::${normalizedQuery.toLowerCase()}::${plan.analysis.searchIntent}`;
 
   if (queryCache.has(cacheKey)) {
     return queryCache.get(cacheKey);
@@ -540,12 +548,16 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
 
   const fetchPromise = (async () => {
     let lastError = null;
+    let anyRouteSucceeded = false;
 
-    const rankedIntents = ["known-item", "title-author", "citation"];
-    const isKnownItemSearch = rankedIntents.includes(plan.analysis && plan.analysis.searchIntent);
+    const intent = plan.analysis && plan.analysis.searchIntent;
+    const isKnownItemSearch = ["known-item", "title-author", "citation"].includes(intent);
+    const isBroadSearch = intent === "subject" || intent === "keyword";
     let bestPayload = null;
+    let merged = [];
+    let routesContributing = 0;
 
-    for (const candidate of plan.candidates) {
+    for (const [routeIndex, candidate] of plan.candidates.entries()) {
       const url = buildSruUrl(candidate.cql);
       debugLog("Trying SRU candidate", candidate, url);
 
@@ -559,8 +571,37 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
           throw new Error(`SRU request failed with status ${response.status}`);
         }
 
-        const xmlText = await response.text();
-        const ranked = SearchIntelligence.rankAndDedupeResults(parseSruResponse(xmlText), normalizedQuery, {
+        const parsed = parseSruResponse(await response.text());
+        anyRouteSucceeded = true;
+
+        // A route matching a huge share of the catalog is not selective enough to be useful.
+        if (parsed.total > CONFIG.maxUsefulHits) {
+          debugLog("Skipping unselective route", candidate, parsed.total);
+          continue;
+        }
+
+        if (isBroadSearch) {
+          // Subject and keyword searches combine strict and relaxed routes so the list
+          // is not limited to the handful of records that match every word exactly.
+          if (parsed.length > 0) {
+            routesContributing += 1;
+            merged = merged.concat(parsed.map((result) => ({ ...result, routeTier: routeIndex })));
+            const ranked = SearchIntelligence.rankAndDedupeResults(merged, normalizedQuery, {
+              availabilityRank: getAvailabilityRank,
+              tiered: true
+            });
+            const combinedCandidate = routesContributing > 1
+              ? { ...candidate, summary: `Combined ${routesContributing} related searches (exact matches first, then looser matches).` }
+              : candidate;
+            bestPayload = { results: ranked.slice(0, CONFIG.maxResults), candidate: combinedCandidate, plan };
+            if (ranked.length >= CONFIG.maxResults) {
+              return bestPayload;
+            }
+          }
+          continue;
+        }
+
+        const ranked = SearchIntelligence.rankAndDedupeResults(parsed, normalizedQuery, {
           availabilityRank: getAvailabilityRank
         });
 
@@ -568,8 +609,7 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
           const payload = { results: ranked.slice(0, CONFIG.maxResults), candidate, plan };
           const topScore = ranked[0].matchScore;
 
-          // Known-item searches keep trying broader routes while the best hit is a weak
-          // match; other intents (subject, keyword) accept the first route with results.
+          // Known-item searches keep trying broader routes while the best hit is a weak match.
           if (!isKnownItemSearch || topScore >= CONFIG.strongMatchScore) {
             return payload;
           }
@@ -588,7 +628,8 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
       return bestPayload;
     }
 
-    if (lastError) {
+    // A route that errors only fails the search when no route completed cleanly.
+    if (lastError && !anyRouteSucceeded) {
       throw lastError;
     }
 
@@ -741,6 +782,7 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
           <div class="${CLASSES.actions}"></div>
         </div>
         <div id="${IDS.panelBody}" class="${CLASSES.body}">
+          <div class="${CLASSES.intent}" hidden></div>
           <p class="${CLASSES.summary}" hidden></p>
           <p class="${CLASSES.status}" aria-live="polite"></p>
           <ol class="${CLASSES.list}"></ol>
@@ -892,15 +934,57 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
     list.appendChild(fragment);
 
     setPanelStatus(panel, STATUS.resultsLoaded(payload.results.length), { busy: false });
-const intentLabel = payload.plan?.analysis?.searchIntent
-  ? `Intent: ${payload.plan.analysis.searchIntent.replace(/-/g, " ")}. `
-  : "";
-
-setPanelSummary(
-  panel,
-  `${intentLabel}${payload.candidate?.summary || `Showing top ${payload.results.length} matches for “${context.query}” from ${context.pageLabel}.`}`
-);
+    setPanelSummary(
+      panel,
+      payload.candidate?.summary || `Showing top ${payload.results.length} matches for “${context.query}” from ${context.pageLabel}.`
+    );
     announce(STATUS.resultsLoaded(payload.results.length));
+  }
+
+  // Show the search intent in bold and let the user switch to a different one.
+  function renderIntentBar(panel, analysis, context) {
+    const bar = panel.querySelector(`.${CLASSES.intent}`);
+    if (!bar) return;
+
+    bar.textContent = "";
+    bar.hidden = !analysis;
+    if (!analysis) return;
+
+    const current = document.createElement("p");
+    current.className = CLASSES.intentLabel;
+    const label = document.createElement("strong");
+    label.textContent = "Search intent: ";
+    const value = document.createElement("strong");
+    value.textContent = SearchIntelligence.INTENT_LABELS[analysis.searchIntent] || analysis.searchIntent;
+    current.appendChild(label);
+    current.appendChild(value);
+    current.appendChild(document.createTextNode(analysis.intentOverridden ? " (chosen by you)" : " (auto-detected)"));
+    bar.appendChild(current);
+
+    const group = document.createElement("div");
+    group.setAttribute("role", "group");
+    group.setAttribute("aria-label", "Change search intent");
+
+    const choices = [{ id: "", label: "Auto", hint: "Let the extension decide" }].concat(
+      SearchIntelligence.INTENT_OPTIONS.filter((option) => option.id !== "citation" || context.sourceType === "scholar")
+    );
+    choices.forEach((choice) => {
+      const active = choice.id === (analysis.intentOverridden ? analysis.searchIntent : "");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = CLASSES.intentButton;
+      button.textContent = choice.label;
+      button.title = choice.hint;
+      button.setAttribute("aria-pressed", String(active));
+      button.addEventListener("click", () => {
+        if (active) return;
+        runtimeState.intentOverride = choice.id;
+        runtimeState.forceRefresh = true;
+        processPage().catch((error) => debugLog("Intent change failed", error));
+      });
+      group.appendChild(button);
+    });
+    bar.appendChild(group);
   }
 
   // Main orchestration entry point for the current page state.
@@ -918,6 +1002,7 @@ setPanelSummary(
       if (panel) {
         clearResults(panel);
         setPanelSummary(panel, "");
+        renderIntentBar(panel, null, context);
         setPanelStatus(panel, STATUS.noQuery, { busy: false });
       }
 
@@ -927,13 +1012,24 @@ setPanelSummary(
       return;
     }
 
+    // A new query starts back on auto-detected intent.
+    if (query !== runtimeState.lastRenderedQuery || sourceType !== runtimeState.lastRenderedSource) {
+      runtimeState.intentOverride = "";
+    }
+
+    const forceRefresh = runtimeState.forceRefresh;
+    runtimeState.forceRefresh = false;
+
     if (
+      !forceRefresh &&
       currentUrl === runtimeState.lastUrl &&
       runtimeState.lastRenderedQuery === query &&
       runtimeState.lastRenderedSource === sourceType
     ) {
       return;
     }
+
+    context.intentOverride = runtimeState.intentOverride;
 
     inlineState.lookups = 0;
     runtimeState.lastUrl = currentUrl;
@@ -948,6 +1044,7 @@ setPanelSummary(
     clearResults(panel);
 
 const searchPlan = buildSearchPlan(query, context);
+renderIntentBar(panel, searchPlan.analysis, context);
 if (!searchPlan.shouldSearch) {
   setPanelSummary(panel, "");
   setPanelStatus(panel, STATUS.skipped, { busy: false });

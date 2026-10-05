@@ -422,3 +422,58 @@
   outline: 2px solid var(--umd-focus);
   outline-offset: 2px;
 }
+
+/* Search-intent bar: bold current intent plus a switcher. */
+.umcp-google-catalog-panel__intent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--umd-border);
+  border-left: 4px solid var(--umd-red);
+  border-radius: 8px;
+  background: var(--umd-surface);
+  color: var(--umd-ink);
+  font: 13px/1.4 Arial, sans-serif;
+}
+
+.umcp-google-catalog-panel__intent[hidden] {
+  display: none;
+}
+
+.umcp-google-catalog-panel__intent-label {
+  margin: 0;
+}
+
+.umcp-google-catalog-panel__intent > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.umcp-google-catalog-panel__intent-button {
+  padding: 4px 10px;
+  border: 1px solid var(--umd-red);
+  border-radius: 999px;
+  background: var(--umd-white);
+  color: var(--umd-red-dark);
+  font: 700 12px/1.2 Arial, sans-serif;
+  cursor: pointer;
+}
+
+.umcp-google-catalog-panel__intent-button[aria-pressed="true"] {
+  background: var(--umd-red);
+  color: var(--umd-white);
+  cursor: default;
+}
+
+.umcp-google-catalog-panel__intent-button:hover:not([aria-pressed="true"]) {
+  background: #fdecee;
+}
+
+.umcp-google-catalog-panel__intent-button:focus-visible {
+  outline: 2px solid var(--umd-focus);
+  outline-offset: 2px;
+}

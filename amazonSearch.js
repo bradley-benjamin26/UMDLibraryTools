@@ -453,7 +453,7 @@
       candidates.push({
         label: "any keywords",
         summary: `Matched broader keywords: ${usefulTokens.join(", ")}`,
-        cql: usefulTokens.map((token) => `alma.any="${escapeCqlTerm(token)}"`).join(" and ")
+        cql: usefulTokens.map((token) => `alma.all_for_ui="${escapeCqlTerm(token)}"`).join(" and ")
       });
     }
 
@@ -931,6 +931,7 @@
 
     const promise = (async () => {
       let lastError = null;
+      let anyRouteSucceeded = false;
       const candidates = buildCandidateQueries(context);
 
       for (const candidate of candidates) {
@@ -950,6 +951,7 @@
 
           const xmlText = await response.text();
           const payload = parseSruResponse(xmlText);
+          anyRouteSucceeded = true;
 
           if (payload.numberOfRecords > 0 && payload.records.length > 0) {
             return {
@@ -963,7 +965,7 @@
         }
       }
 
-      if (lastError) {
+      if (lastError && !anyRouteSucceeded) {
         throw lastError;
       }
 
