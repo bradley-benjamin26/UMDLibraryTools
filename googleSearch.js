@@ -22,6 +22,11 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
   const CONFIG = {
     debug: false,
     maxResults: 5,
+    fetchRecords: 10,
+    strongMatchScore: 0.6,
+    inlineBadgeMinScore: 0.8,
+    maxInlineLookups: 10,
+    inlineConcurrency: 2,
     processDelayMs: 350,
     sruBaseUrl: "https://usmai-umcp.alma.exlibrisgroup.com/view/sru/01USMAI_UMCP",
     sruVersion: "1.2",
@@ -78,6 +83,8 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
     meta: "umcp-google-catalog-panel__meta",
     metaLine: "umcp-google-catalog-panel__meta-line",
     label: "umcp-google-catalog-panel__label",
+    inlineRow: "umcp-google-inline-row",
+    inlineLink: "umcp-google-inline-link",
     value: "umcp-google-catalog-panel__value",
     availability: "umcp-google-catalog-panel__availability",
     availabilityAvailable: "is-available",
@@ -208,6 +215,15 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
     return url.toString();
   }
 
+  // Deep link to one Primo record using the Alma record ID from MARC field 001.
+  function buildCatalogRecordUrl(recordId) {
+    const url = new URL(CONFIG.catalog.baseUrl.replace(/\/search$/, "/fulldisplay"));
+    applyCatalogDefaults(url);
+    url.searchParams.set("docid", `alma${recordId}`);
+    url.searchParams.set("context", "L");
+    return url.toString();
+  }
+
   // Build a broader catalog link from the page query. This is used by the panel
   // header action so users can jump into the full Primo interface.
   function buildFullCatalogSearchUrl(query, context = {}) {
@@ -223,7 +239,7 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
     url.searchParams.set("version", CONFIG.sruVersion);
     url.searchParams.set("operation", "searchRetrieve");
     url.searchParams.set("recordSchema", CONFIG.sruRecordSchema);
-    url.searchParams.set("maximumRecords", String(CONFIG.maxResults));
+    url.searchParams.set("maximumRecords", String(CONFIG.fetchRecords));
     url.searchParams.set("query", cqlQuery);
     return url.toString();
   }
@@ -459,6 +475,8 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
       getFirstMarcValue(recordNode, "008", ["a"]);
 
     const isbn = getFirstMarcValue(recordNode, "020", ["a"]);
+    const idNode = recordNode.querySelector('controlfield[tag="001"]');
+    const recordId = idNode ? normalizeText(idNode.textContent) : "";
 
     const printAvailability = parseMarcAvailability(recordNode, "AVA", {
       availableText: "Print available",
@@ -477,6 +495,7 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
       author,
       year,
       isbn,
+      recordId,
       printAvailability,
       onlineAvailability,
       overallAvailability: summarizeCombinedAvailability(printAvailability, onlineAvailability)
@@ -499,8 +518,13 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
     }
 
     return Array.from(xml.querySelectorAll("recordData record, recordData > record"))
-      .map((node) => recordToResult(node))
-      .slice(0, CONFIG.maxResults);
+      .map((node) => recordToResult(node));
+  }
+
+  function getAvailabilityRank(result) {
+    if (result.onlineAvailability && result.onlineAvailability.isAvailable) return 3;
+    if (result.printAvailability && result.printAvailability.isAvailable) return 2;
+    return result.overallAvailability && result.overallAvailability.text === "Availability unknown" ? 0 : 1;
   }
 
   // Run the candidate SRU searches from most precise to broadest and cache the
@@ -517,6 +541,10 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
   const fetchPromise = (async () => {
     let lastError = null;
 
+    const rankedIntents = ["known-item", "title-author", "citation"];
+    const isKnownItemSearch = rankedIntents.includes(plan.analysis && plan.analysis.searchIntent);
+    let bestPayload = null;
+
     for (const candidate of plan.candidates) {
       const url = buildSruUrl(candidate.cql);
       debugLog("Trying SRU candidate", candidate, url);
@@ -532,19 +560,32 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
         }
 
         const xmlText = await response.text();
-        const results = parseSruResponse(xmlText);
+        const ranked = SearchIntelligence.rankAndDedupeResults(parseSruResponse(xmlText), normalizedQuery, {
+          availabilityRank: getAvailabilityRank
+        });
 
-        if (results.length > 0) {
-          return {
-            results,
-            candidate,
-            plan
-          };
+        if (ranked.length > 0) {
+          const payload = { results: ranked.slice(0, CONFIG.maxResults), candidate, plan };
+          const topScore = ranked[0].matchScore;
+
+          // Known-item searches keep trying broader routes while the best hit is a weak
+          // match; other intents (subject, keyword) accept the first route with results.
+          if (!isKnownItemSearch || topScore >= CONFIG.strongMatchScore) {
+            return payload;
+          }
+
+          if (!bestPayload || topScore > bestPayload.results[0].matchScore) {
+            bestPayload = payload;
+          }
         }
       } catch (error) {
         lastError = error;
         debugLog("SRU candidate failed", candidate, error);
       }
+    }
+
+    if (bestPayload) {
+      return bestPayload;
     }
 
     if (lastError) {
@@ -813,8 +854,15 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
 
     const links = document.createElement("div");
     links.className = CLASSES.links;
+    if (result.recordId) {
+      links.appendChild(createActionLink("Open record", buildCatalogRecordUrl(result.recordId), CLASSES.resultLink));
+    }
     links.appendChild(
-      createActionLink("Open in catalog", buildCatalogSearchUrl(result.title, result.author), CLASSES.resultLink)
+      createActionLink(
+        result.recordId ? "Search catalog" : "Open in catalog",
+        buildCatalogSearchUrl(result.title, result.author),
+        CLASSES.resultLink
+      )
     );
     item.appendChild(links);
 
@@ -887,6 +935,7 @@ setPanelSummary(
       return;
     }
 
+    inlineState.lookups = 0;
     runtimeState.lastUrl = currentUrl;
     runtimeState.lastRenderedQuery = query;
     runtimeState.lastRenderedSource = sourceType;
@@ -931,11 +980,138 @@ if (!searchPlan.shouldSearch) {
     }
   }
 
+  // ---- Inline per-result matching -------------------------------------------------
+
+  const SCHOLARLY_RESULT_HOSTS = /(?:^|\.)(?:doi\.org|jstor\.org|sciencedirect\.com|springer\.com|link\.springer\.com|wiley\.com|tandfonline\.com|sagepub\.com|nature\.com|ncbi\.nlm\.nih\.gov|arxiv\.org|projectmuse\.org|muse\.jhu\.edu|ieeexplore\.ieee\.org|dl\.acm\.org|oup\.com|cambridge\.org|pnas\.org|science\.org|researchgate\.net)$/i;
+  const inlineState = { lookups: 0, running: 0, queue: [], cache: new Map() };
+
+  function cleanResultTitle(raw) {
+    return normalizeText(raw)
+      .replace(/^\[(?:PDF|HTML|BOOK|B|CITATION|C)\]\s*/i, "")
+      .replace(/\s+[-|\u2013\u2014]\s+[^-|\u2013\u2014]{2,40}$/, "")
+      .trim();
+  }
+
+  // Collect the page's own result entries so each can be matched individually.
+  function collectPageResults(sourceType) {
+    const entries = [];
+
+    if (sourceType === "scholar") {
+      document.querySelectorAll("#gs_res_ccl_mid .gs_r").forEach((node) => {
+        const heading = node.querySelector(".gs_rt");
+        if (!heading) return;
+        const link = heading.querySelector("a[href]");
+        const title = cleanResultTitle(heading.textContent);
+        if (title) {
+          entries.push({ node, anchor: heading, title, href: link ? link.href : "", insertAfter: node.querySelector(".gs_a") || heading });
+        }
+      });
+      return entries;
+    }
+
+    document.querySelectorAll("#search a[href] h3").forEach((heading) => {
+      const anchor = heading.closest("a[href]");
+      if (!anchor) return;
+      let host = "";
+      try {
+        host = new URL(anchor.href).hostname;
+      } catch (error) {
+        return;
+      }
+      if (!SCHOLARLY_RESULT_HOSTS.test(host) && !SearchIntelligence.findDoi(anchor.href)) return;
+      const title = cleanResultTitle(heading.textContent);
+      if (title) {
+        entries.push({ node: anchor, anchor, title, href: anchor.href, insertAfter: anchor });
+      }
+    });
+    return entries;
+  }
+
+  function lookupInlineMatch(title) {
+    const key = SearchIntelligence.normalizeText(title).toLowerCase();
+    if (inlineState.cache.has(key)) return inlineState.cache.get(key);
+
+    const words = SearchIntelligence.normalizeText(title).split(" ").slice(0, 12).join(" ");
+    const promise = (async () => {
+      const cql = `alma.title="${words.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+      const response = await fetch(buildSruUrl(cql), { method: "GET", credentials: "omit" });
+      if (!response.ok) throw new Error(`SRU request failed with status ${response.status}`);
+      const ranked = SearchIntelligence.rankAndDedupeResults(parseSruResponse(await response.text()), title, {
+        availabilityRank: getAvailabilityRank
+      });
+      const top = ranked[0];
+      return top && SearchIntelligence.titleSimilarity(title, top.title) >= CONFIG.inlineBadgeMinScore ? top : null;
+    })();
+
+    inlineState.cache.set(key, promise);
+    return promise;
+  }
+
+  function buildInlineRow(entry, match) {
+    const row = document.createElement("div");
+    row.className = CLASSES.inlineRow;
+
+    if (match) {
+      const badge = createBadge(`UMD: ${match.overallAvailability.text}`, match.overallAvailability.modifierClass === CLASSES.availabilityAvailable ? CLASSES.badgeGood : CLASSES.badgeMuted);
+      row.appendChild(badge);
+      row.appendChild(createActionLink(
+        match.recordId ? "Open record" : "Search catalog",
+        match.recordId ? buildCatalogRecordUrl(match.recordId) : buildCatalogSearchUrl(match.title, match.author),
+        CLASSES.inlineLink
+      ));
+    }
+
+    const doi = SearchIntelligence.findDoi(entry.href);
+    const discoverUrl = new URL(CONFIG.catalog.baseUrl);
+    applyCatalogDefaults(discoverUrl);
+    discoverUrl.searchParams.set("query", `${CONFIG.catalog.queryPrefix}${doi || entry.title}`);
+    row.appendChild(createActionLink("Find via UMD Discover", discoverUrl.toString(), CLASSES.inlineLink));
+    return row;
+  }
+
+  function pumpInlineQueue() {
+    while (inlineState.running < CONFIG.inlineConcurrency && inlineState.queue.length) {
+      const entry = inlineState.queue.shift();
+      inlineState.running += 1;
+      lookupInlineMatch(entry.title)
+        .catch((error) => {
+          debugLog("Inline lookup failed", entry.title, error);
+          return null;
+        })
+        .then((match) => {
+          if (entry.insertAfter.isConnected) {
+            entry.insertAfter.insertAdjacentElement("afterend", buildInlineRow(entry, match));
+          }
+        })
+        .finally(() => {
+          inlineState.running -= 1;
+          pumpInlineQueue();
+        });
+    }
+  }
+
+  // Mark each result once, then look it up with limited concurrency so a page of
+  // results never triggers a burst of catalog requests.
+  function annotatePageResults() {
+    const context = getSearchContext();
+    if (!context.sourceType) return;
+
+    collectPageResults(context.sourceType).forEach((entry) => {
+      if (entry.node.dataset.umcpChecked === "true") return;
+      if (inlineState.lookups >= CONFIG.maxInlineLookups) return;
+      entry.node.dataset.umcpChecked = "true";
+      inlineState.lookups += 1;
+      inlineState.queue.push(entry);
+    });
+    pumpInlineQueue();
+  }
+
   // Debounce repeated mutation bursts so we do not re-process the page too often.
   function scheduleProcess() {
     window.clearTimeout(runtimeState.processTimer);
     runtimeState.processTimer = window.setTimeout(() => {
       processPage().catch((error) => debugLog("processPage failed", error));
+      annotatePageResults();
     }, CONFIG.processDelayMs);
   }
 
@@ -976,6 +1152,7 @@ if (!searchPlan.shouldSearch) {
     ensureLiveRegion();
     installHistoryListeners();
     processPage().catch((error) => debugLog("Initial process failed", error));
+    annotatePageResults();
 
     const observer = new MutationObserver(() => {
       scheduleProcess();

@@ -392,3 +392,33 @@
     justify-content: center;
   }
 }
+
+/* Inline per-result catalog row shown under Google / Scholar hits. */
+.umcp-google-inline-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 6px;
+  font: 12px/1.4 Arial, sans-serif;
+}
+
+.umcp-google-inline-row .umcp-google-catalog-panel__badge {
+  margin: 0;
+}
+
+.umcp-google-inline-link:link,
+.umcp-google-inline-link:visited {
+  color: var(--umd-red-dark);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.umcp-google-inline-link:hover {
+  color: var(--umd-red-darker);
+}
+
+.umcp-google-inline-link:focus-visible {
+  outline: 2px solid var(--umd-focus);
+  outline-offset: 2px;
+}

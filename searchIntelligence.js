@@ -588,6 +588,71 @@
     return deduped;
   }
 
+  const TITLE_FILLER = new Set(["the", "a", "an", "of", "and", "in", "on", "for", "to", "by", "with"]);
+
+  function titleTokens(text) {
+    return normalizeText(text)
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((token) => token && !TITLE_FILLER.has(token));
+  }
+
+  // 0..1 similarity between two titles; a short title fully contained in a longer
+  // one (a subtitle) scores 0.9, but only when it has at least three words.
+  function titleSimilarity(a, b) {
+    const setA = new Set(titleTokens(a));
+    const setB = new Set(titleTokens(b));
+    if (!setA.size || !setB.size) return 0;
+
+    let shared = 0;
+    setA.forEach((token) => {
+      if (setB.has(token)) shared += 1;
+    });
+
+    const jaccard = shared / (setA.size + setB.size - shared);
+    const smaller = Math.min(setA.size, setB.size);
+    const containment = smaller >= 3 ? (shared / smaller) * 0.9 : 0;
+    return Math.max(jaccard, containment);
+  }
+
+  function queryCoverage(query, text) {
+    const queryTokens = titleTokens(query);
+    if (!queryTokens.length) return 0;
+    const textTokens = new Set(titleTokens(text));
+    return queryTokens.filter((token) => textTokens.has(token)).length / queryTokens.length;
+  }
+
+  function scoreResultAgainstQuery(result, query) {
+    const text = `${result.title || ""} ${result.author || ""}`;
+    return Math.max(titleSimilarity(query, result.title), queryCoverage(query, text) * 0.95);
+  }
+
+  function resultDedupeKey(result) {
+    const surname = normalizeText(result.author).toLowerCase().split(/[,\s]/)[0] || "";
+    return `${titleTokens(result.title).slice(0, 8).join(" ")}|${surname}`;
+  }
+
+  // Collapse duplicate editions (keeping the most available copy), score each record
+  // against the query, and sort best match first. Ties keep the catalog's own order.
+  function rankAndDedupeResults(results, query, options = {}) {
+    const availabilityRank = typeof options.availabilityRank === "function" ? options.availabilityRank : () => 0;
+    const best = new Map();
+
+    (results || []).forEach((result, index) => {
+      const key = resultDedupeKey(result);
+      const scored = { ...result, matchScore: scoreResultAgainstQuery(result, query), sourceIndex: index };
+      const existing = best.get(key);
+      if (!existing || availabilityRank(scored) > availabilityRank(existing)) {
+        best.set(key, existing ? { ...scored, sourceIndex: Math.min(existing.sourceIndex, index) } : scored);
+      }
+    });
+
+    return Array.from(best.values()).sort((a, b) => (b.matchScore - a.matchScore) || (a.sourceIndex - b.sourceIndex));
+  }
+
   function buildSearchPlan(rawQuery, context = {}, options = {}) {
     const analysis = analyzeQuery(rawQuery, context, options);
     let candidates = [];
@@ -622,6 +687,12 @@
       return analyzeQuery(rawQuery, context, options).cleanedQuery;
     },
     analyzeQuery,
-    buildSearchPlan
+    buildSearchPlan,
+    titleSimilarity,
+    rankAndDedupeResults,
+    findDoi(text) {
+      const match = String(text || "").match(DOI_PATTERN);
+      return match ? match[0].replace(/[.,;)]+$/, "") : "";
+    }
   };
 })();

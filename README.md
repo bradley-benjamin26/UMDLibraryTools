@@ -19,6 +19,7 @@ On likely scholarly pages, the extension injects a compact floating toolbar with
 - Get Research Help (LibAnswers)
 - Cite panel (MLA/Chicago/APA, RIS, Zotero, copy)
 - Check references panel (Crossref lookup and report export)
+- Settings (optional email for Crossref polite-pool requests)
 - Hide toolbar on this site (session-level hide/show button)
 
 ### Reference integrity checks
@@ -53,7 +54,7 @@ Recent updates include:
 The extension also includes dedicated integrations:
 
 - BNCollege course-material extraction and CSV export
-- Google and Google Scholar library-match panels
+- Google and Google Scholar library-match panels, with ranked/de-duplicated results, direct record links, and a per-result "UMD: availability" badge plus "Find via UMD Discover" link under Scholar and scholarly-site Google hits
 - Amazon catalog helper panel
 
 ## Project structure
@@ -64,6 +65,7 @@ The extension also includes dedicated integrations:
 - toolbarProxy.js
 - toolbarSearch.js
 - toolbarHelp.js
+- toolbarSettings.js
 - toolbarCite.js
 - toolbarIntegrity.js
 - proxyButton.js
@@ -98,7 +100,7 @@ Run syntax checks:
 
 ```bash
 cd "/Users/bbradle1/Documents/projects/TopTextbookExtension" && \
-node --check popup.js toolbarCore.js toolbarProxy.js toolbarSearch.js toolbarHelp.js toolbarCite.js toolbarIntegrity.js proxyButton.js content.js searchIntelligence.js amazonSearch.js googleSearch.js
+node --check popup.js toolbarCore.js toolbarProxy.js toolbarSearch.js toolbarHelp.js toolbarSettings.js toolbarCite.js toolbarIntegrity.js proxyButton.js content.js searchIntelligence.js amazonSearch.js googleSearch.js
 ```
 
 Run regression harnesses:
