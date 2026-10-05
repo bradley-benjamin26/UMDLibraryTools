@@ -228,7 +228,14 @@
     grabHandle.setAttribute("aria-hidden", "true");
     grabHandle.title = "Drag to move the toolbar";
     grabHandle.textContent = "⋮⋮";
-    container.appendChild(grabHandle);
+    const header = document.createElement("div");
+    header.className = "umcp-library-toolbar-header";
+    const spacer = document.createElement("span");
+    spacer.className = "umcp-library-toolbar-header-spacer";
+    spacer.setAttribute("aria-hidden", "true");
+    header.appendChild(spacer);
+    header.appendChild(grabHandle);
+    container.appendChild(header);
 
     toolbar.makeToolbarDraggable(container);
     return container;
@@ -386,6 +393,7 @@
     const helpButton = toolbar.createHelpButton(liveRegion);
     const citeButton = toolbar.createCiteButton(liveRegion);
     const integrityButton = toolbar.createIntegrityButton(liveRegion);
+    const settingsButton = toolbar.createSettingsButton(liveRegion);
     const skipButton = toolbar.createSkipButton(container, liveRegion);
 
     container.appendChild(proxyButton);
@@ -393,6 +401,7 @@
     container.appendChild(helpButton);
     container.appendChild(citeButton);
     container.appendChild(integrityButton);
+    container.querySelector(".umcp-library-toolbar-header").appendChild(settingsButton);
     container.appendChild(skipButton);
     toolbar.appendToPageRoot(liveRegion);
     toolbar.appendToPageRoot(container);
