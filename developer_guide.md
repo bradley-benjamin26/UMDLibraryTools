@@ -75,6 +75,17 @@ Primary responsibilities:
 
 - opens LibAnswers in a new tab
 
+### toolbarNewspapers.js
+
+Primary responsibilities:
+
+- holds the NEWSPAPER_ACCESS list (site hostnames -> catalog MMS ID)
+- matches the current host and builds the Primo record permalink
+- renders the "Find <paper> in UMD Libraries" toolbar button
+- on a listed newspaper site that is not otherwise scholarly, the toolbar shows only newspaper, search, help, settings and hide buttons
+
+To add a paper, append an entry using the MMS ID column from the Alma electronic titles export.
+
 ### toolbarCite.js
 
 Primary responsibilities:
@@ -166,7 +177,7 @@ Current theme direction:
 
 ```bash
 cd "/Users/bbradle1/Documents/projects/TopTextbookExtension" && \
-node --check popup.js toolbarCore.js toolbarProxy.js toolbarSearch.js toolbarHelp.js toolbarCite.js toolbarIntegrity.js proxyButton.js content.js searchIntelligence.js amazonSearch.js googleSearch.js
+node --check popup.js toolbarCore.js toolbarProxy.js toolbarSearch.js toolbarHelp.js toolbarNewspapers.js toolbarCite.js toolbarIntegrity.js proxyButton.js content.js searchIntelligence.js amazonSearch.js googleSearch.js
 ```
 
 ### Popup regression harness

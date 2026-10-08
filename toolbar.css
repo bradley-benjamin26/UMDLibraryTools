@@ -126,6 +126,17 @@
   color: #ffffff;
 }
 
+.umcp-library-toolbar-button--newspaper {
+  background: linear-gradient(180deg, #e21833 0%, #c3122c 100%);
+  color: #ffffff;
+  border-color: #b11128;
+}
+
+.umcp-library-toolbar-button--newspaper:hover {
+  background: linear-gradient(180deg, #c3122c 0%, #a40f24 100%);
+  color: #ffffff;
+}
+
 .umcp-library-toolbar-button--cite {
   background: linear-gradient(180deg, #e21833 0%, #c3122c 100%);
   color: #ffffff;

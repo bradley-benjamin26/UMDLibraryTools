@@ -64,6 +64,7 @@
         "toolbarProxy.js",
         "toolbarSearch.js",
         "toolbarHelp.js",
+        "toolbarNewspapers.js",
         "toolbarSettings.js",
         "toolbarCite.js",
         "toolbarIntegrity.js",

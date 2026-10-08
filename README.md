@@ -65,6 +65,7 @@ The extension also includes dedicated integrations:
 - toolbarProxy.js
 - toolbarSearch.js
 - toolbarHelp.js
+- toolbarNewspapers.js
 - toolbarSettings.js
 - toolbarCite.js
 - toolbarIntegrity.js
@@ -86,6 +87,7 @@ The extension also includes dedicated integrations:
 
 - tests/popup-regression.test.js
 - tests/reference-regression.test.js
+- tests/newspaper-access.test.js
 
 ## Installation (unpacked)
 
@@ -100,7 +102,7 @@ Run syntax checks:
 
 ```bash
 cd "/Users/bbradle1/Documents/projects/TopTextbookExtension" && \
-node --check popup.js toolbarCore.js toolbarProxy.js toolbarSearch.js toolbarHelp.js toolbarSettings.js toolbarCite.js toolbarIntegrity.js proxyButton.js content.js searchIntelligence.js amazonSearch.js googleSearch.js
+node --check popup.js toolbarCore.js toolbarProxy.js toolbarSearch.js toolbarHelp.js toolbarNewspapers.js toolbarSettings.js toolbarCite.js toolbarIntegrity.js proxyButton.js content.js searchIntelligence.js amazonSearch.js googleSearch.js
 ```
 
 Run regression harnesses:
@@ -108,7 +110,8 @@ Run regression harnesses:
 ```bash
 cd "/Users/bbradle1/Documents/projects/TopTextbookExtension" && \
 node tests/popup-regression.test.js && \
-node tests/reference-regression.test.js
+node tests/reference-regression.test.js && \
+node tests/newspaper-access.test.js
 ```
 
 Validate popup markup:
