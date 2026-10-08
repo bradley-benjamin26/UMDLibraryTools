@@ -90,6 +90,8 @@ The extension also includes dedicated integrations:
 - tests/reference-regression.test.js
 - tests/newspaper-access.test.js
 - tests/reference-links.test.js
+- tests/citation-integrity.test.js
+- tests/search-ranking.test.js
 
 ## Installation (unpacked)
 
@@ -114,7 +116,9 @@ cd "/Users/bbradle1/Documents/projects/TopTextbookExtension" && \
 node tests/popup-regression.test.js && \
 node tests/reference-regression.test.js && \
 node tests/newspaper-access.test.js && \
-node tests/reference-links.test.js
+node tests/reference-links.test.js && \
+node tests/citation-integrity.test.js && \
+node tests/search-ranking.test.js
 ```
 
 Validate popup markup:

@@ -29,16 +29,25 @@
 
   toolbar.saveUserEmail = function(value) {
     const email = String(value || "").trim();
+    const previousEmail = toolbar.userEmail;
     toolbar.userEmail = email;
     return new Promise((resolve) => {
       try {
-        const done = () => resolve(true);
+        const done = () => {
+          if (chrome.runtime.lastError) {
+            toolbar.userEmail = previousEmail;
+            resolve(false);
+          } else {
+            resolve(true);
+          }
+        };
         if (email) {
           chrome.storage.sync.set({ [EMAIL_STORAGE_KEY]: email }, done);
         } else {
           chrome.storage.sync.remove(EMAIL_STORAGE_KEY, done);
         }
       } catch (error) {
+        toolbar.userEmail = previousEmail;
         resolve(false);
       }
     });

@@ -3,13 +3,20 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-function loadToolbar(metaByName = {}) {
+function loadToolbar(metaByName = {}, storageFailure = "") {
+  const runtime = { getURL: () => "", lastError: null };
+  const finishStorageOperation = (operation, callback) => {
+    runtime.lastError = storageFailure === operation ? { message: "Storage failed" } : null;
+    callback();
+    runtime.lastError = null;
+  };
   const context = {
     console, URL, JSON, String, Number, Boolean, Array, Map, Set, Promise, Math, Date, Blob, RegExp,
     navigator: { userAgent: "test" },
-    chrome: { runtime: { getURL: () => "" }, storage: { sync: {
+    chrome: { runtime, storage: { sync: {
       get: (key, cb) => cb({ "umcp-library-crossref-email": "stored@umd.edu" }),
-      set: (items, cb) => cb(), remove: (key, cb) => cb() } } },
+      set: (items, cb) => finishStorageOperation("set", cb),
+      remove: (key, cb) => finishStorageOperation("remove", cb) } } },
     setTimeout, clearTimeout,
     fetch: async () => ({ ok: false, status: 404, headers: { get: () => "" }, json: async () => ({}) })
   };
@@ -88,6 +95,17 @@ assert.ok(toolbar.isValidEmail("a@b.co") && !toolbar.isValidEmail("nope"));
   assert.ok(toolbar.buildCrossrefUrl("/works").includes("mailto=stored%40umd.edu"), "saved email is sent to Crossref");
   await toolbar.saveUserEmail("");
   assert.ok(!toolbar.buildCrossrefUrl("/works").includes("mailto"));
+
+  const failedSetToolbar = loadToolbar({}, "set");
+  await failedSetToolbar.loadUserEmail();
+  assert.equal(await failedSetToolbar.saveUserEmail("new@umd.edu"), false);
+  assert.equal(failedSetToolbar.userEmail, "stored@umd.edu", "failed save restores the previous email");
+
+  const failedRemoveToolbar = loadToolbar({}, "remove");
+  await failedRemoveToolbar.loadUserEmail();
+  assert.equal(await failedRemoveToolbar.saveUserEmail(""), false);
+  assert.equal(failedRemoveToolbar.userEmail, "stored@umd.edu", "failed removal restores the previous email");
+
   console.log("settings email checks passed");
 })();
 

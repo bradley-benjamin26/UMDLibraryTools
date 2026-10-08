@@ -188,7 +188,7 @@ Current theme direction:
 
 ```bash
 cd "/Users/bbradle1/Documents/projects/TopTextbookExtension" && \
-node --check popup.js toolbarCore.js toolbarProxy.js toolbarSearch.js toolbarHelp.js toolbarNewspapers.js toolbarCite.js toolbarIntegrity.js proxyButton.js content.js searchIntelligence.js amazonSearch.js googleSearch.js
+node --check popup.js toolbarCore.js toolbarProxy.js toolbarSearch.js toolbarHelp.js toolbarNewspapers.js toolbarSettings.js toolbarCite.js toolbarIntegrity.js proxyButton.js content.js searchIntelligence.js amazonSearch.js googleSearch.js
 ```
 
 ### Popup regression harness
