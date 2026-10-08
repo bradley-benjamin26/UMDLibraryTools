@@ -56,6 +56,18 @@
     },
     {
       "matches": [
+        "https://*.wikipedia.org/wiki/*"
+      ],
+      "js": [
+        "referenceLinks.js"
+      ],
+      "css": [
+        "referenceLinks.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
         "http://*/*",
         "https://*/*"
       ],
@@ -64,6 +76,8 @@
         "toolbarProxy.js",
         "toolbarSearch.js",
         "toolbarHelp.js",
+        "toolbarNewspapers.js",
+        "toolbarSettings.js",
         "toolbarCite.js",
         "toolbarIntegrity.js",
         "proxyButton.js"

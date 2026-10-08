@@ -22,6 +22,12 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
   const CONFIG = {
     debug: false,
     maxResults: 5,
+    fetchRecords: 10,
+    strongMatchScore: 0.6,
+    maxUsefulHits: 3000,
+    inlineBadgeMinScore: 0.8,
+    maxInlineLookups: 10,
+    inlineConcurrency: 2,
     processDelayMs: 350,
     sruBaseUrl: "https://usmai-umcp.alma.exlibrisgroup.com/view/sru/01USMAI_UMCP",
     sruVersion: "1.2",
@@ -63,6 +69,9 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
     title: "umcp-google-catalog-panel__title",
     subtitle: "umcp-google-catalog-panel__subtitle",
     summary: "umcp-google-catalog-panel__summary",
+    intent: "umcp-google-catalog-panel__intent",
+    intentLabel: "umcp-google-catalog-panel__intent-label",
+    intentButton: "umcp-google-catalog-panel__intent-button",
     actions: "umcp-google-catalog-panel__actions",
     actionLink: "umcp-google-catalog-panel__action-link",
     toggleButton: "umcp-google-catalog-panel__toggle-button",
@@ -78,6 +87,8 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
     meta: "umcp-google-catalog-panel__meta",
     metaLine: "umcp-google-catalog-panel__meta-line",
     label: "umcp-google-catalog-panel__label",
+    inlineRow: "umcp-google-inline-row",
+    inlineLink: "umcp-google-inline-link",
     value: "umcp-google-catalog-panel__value",
     availability: "umcp-google-catalog-panel__availability",
     availabilityAvailable: "is-available",
@@ -118,6 +129,8 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
     lastRenderedQuery: "",
     lastRenderedSource: "",
     activeRequestToken: 0,
+    intentOverride: "",
+    forceRefresh: false,
     historyListenersInstalled: false
   };
 
@@ -208,6 +221,15 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
     return url.toString();
   }
 
+  // Deep link to one Primo record using the Alma record ID from MARC field 001.
+  function buildCatalogRecordUrl(recordId) {
+    const url = new URL(CONFIG.catalog.baseUrl.replace(/\/search$/, "/fulldisplay"));
+    applyCatalogDefaults(url);
+    url.searchParams.set("docid", `alma${recordId}`);
+    url.searchParams.set("context", "L");
+    return url.toString();
+  }
+
   // Build a broader catalog link from the page query. This is used by the panel
   // header action so users can jump into the full Primo interface.
   function buildFullCatalogSearchUrl(query, context = {}) {
@@ -223,7 +245,7 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
     url.searchParams.set("version", CONFIG.sruVersion);
     url.searchParams.set("operation", "searchRetrieve");
     url.searchParams.set("recordSchema", CONFIG.sruRecordSchema);
-    url.searchParams.set("maximumRecords", String(CONFIG.maxResults));
+    url.searchParams.set("maximumRecords", String(CONFIG.fetchRecords));
     url.searchParams.set("query", cqlQuery);
     return url.toString();
   }
@@ -459,6 +481,8 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
       getFirstMarcValue(recordNode, "008", ["a"]);
 
     const isbn = getFirstMarcValue(recordNode, "020", ["a"]);
+    const idNode = recordNode.querySelector('controlfield[tag="001"]');
+    const recordId = idNode ? normalizeText(idNode.textContent) : "";
 
     const printAvailability = parseMarcAvailability(recordNode, "AVA", {
       availableText: "Print available",
@@ -477,6 +501,7 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
       author,
       year,
       isbn,
+      recordId,
       printAvailability,
       onlineAvailability,
       overallAvailability: summarizeCombinedAvailability(printAvailability, onlineAvailability)
@@ -495,12 +520,19 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
     const numberOfRecordsNode = xml.querySelector("numberOfRecords");
     const numberOfRecords = Number.parseInt((numberOfRecordsNode && numberOfRecordsNode.textContent) || "0", 10);
     if (!numberOfRecords) {
-      return [];
+      return Object.assign([], { total: 0 });
     }
 
-    return Array.from(xml.querySelectorAll("recordData record, recordData > record"))
-      .map((node) => recordToResult(node))
-      .slice(0, CONFIG.maxResults);
+    const results = Array.from(xml.querySelectorAll("recordData record, recordData > record"))
+      .map((node) => recordToResult(node));
+    results.total = numberOfRecords;
+    return results;
+  }
+
+  function getAvailabilityRank(result) {
+    if (result.onlineAvailability && result.onlineAvailability.isAvailable) return 3;
+    if (result.printAvailability && result.printAvailability.isAvailable) return 2;
+    return result.overallAvailability && result.overallAvailability.text === "Availability unknown" ? 0 : 1;
   }
 
   // Run the candidate SRU searches from most precise to broadest and cache the
@@ -508,7 +540,7 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
   async function fetchCatalogResults(query, context = {}) {
   const plan = buildSearchPlan(query, context);
   const normalizedQuery = (plan.analysis && plan.analysis.cleanedQuery) || sanitizeQuery(query, context);
-  const cacheKey = `${context.sourceType || "google"}::${normalizedQuery.toLowerCase()}`;
+  const cacheKey = `${context.sourceType || "google"}::${normalizedQuery.toLowerCase()}::${plan.analysis.searchIntent}`;
 
   if (queryCache.has(cacheKey)) {
     return queryCache.get(cacheKey);
@@ -516,8 +548,16 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
 
   const fetchPromise = (async () => {
     let lastError = null;
+    let anyRouteSucceeded = false;
 
-    for (const candidate of plan.candidates) {
+    const intent = plan.analysis && plan.analysis.searchIntent;
+    const isKnownItemSearch = ["known-item", "title-author", "citation"].includes(intent);
+    const isBroadSearch = intent === "subject" || intent === "keyword";
+    let bestPayload = null;
+    let merged = [];
+    let routesContributing = 0;
+
+    for (const [routeIndex, candidate] of plan.candidates.entries()) {
       const url = buildSruUrl(candidate.cql);
       debugLog("Trying SRU candidate", candidate, url);
 
@@ -531,15 +571,52 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
           throw new Error(`SRU request failed with status ${response.status}`);
         }
 
-        const xmlText = await response.text();
-        const results = parseSruResponse(xmlText);
+        const parsed = parseSruResponse(await response.text());
+        anyRouteSucceeded = true;
 
-        if (results.length > 0) {
-          return {
-            results,
-            candidate,
-            plan
-          };
+        // A route matching a huge share of the catalog is not selective enough to be useful.
+        if (parsed.total > CONFIG.maxUsefulHits) {
+          debugLog("Skipping unselective route", candidate, parsed.total);
+          continue;
+        }
+
+        if (isBroadSearch) {
+          // Subject and keyword searches combine strict and relaxed routes so the list
+          // is not limited to the handful of records that match every word exactly.
+          if (parsed.length > 0) {
+            routesContributing += 1;
+            merged = merged.concat(parsed.map((result) => ({ ...result, routeTier: routeIndex })));
+            const ranked = SearchIntelligence.rankAndDedupeResults(merged, normalizedQuery, {
+              availabilityRank: getAvailabilityRank,
+              tiered: true
+            });
+            const combinedCandidate = routesContributing > 1
+              ? { ...candidate, summary: `Combined ${routesContributing} related searches (exact matches first, then looser matches).` }
+              : candidate;
+            bestPayload = { results: ranked.slice(0, CONFIG.maxResults), candidate: combinedCandidate, plan };
+            if (ranked.length >= CONFIG.maxResults) {
+              return bestPayload;
+            }
+          }
+          continue;
+        }
+
+        const ranked = SearchIntelligence.rankAndDedupeResults(parsed, normalizedQuery, {
+          availabilityRank: getAvailabilityRank
+        });
+
+        if (ranked.length > 0) {
+          const payload = { results: ranked.slice(0, CONFIG.maxResults), candidate, plan };
+          const topScore = ranked[0].matchScore;
+
+          // Known-item searches keep trying broader routes while the best hit is a weak match.
+          if (!isKnownItemSearch || topScore >= CONFIG.strongMatchScore) {
+            return payload;
+          }
+
+          if (!bestPayload || topScore > bestPayload.results[0].matchScore) {
+            bestPayload = payload;
+          }
         }
       } catch (error) {
         lastError = error;
@@ -547,7 +624,12 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
       }
     }
 
-    if (lastError) {
+    if (bestPayload) {
+      return bestPayload;
+    }
+
+    // A route that errors only fails the search when no route completed cleanly.
+    if (lastError && !anyRouteSucceeded) {
       throw lastError;
     }
 
@@ -700,6 +782,7 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
           <div class="${CLASSES.actions}"></div>
         </div>
         <div id="${IDS.panelBody}" class="${CLASSES.body}">
+          <div class="${CLASSES.intent}" hidden></div>
           <p class="${CLASSES.summary}" hidden></p>
           <p class="${CLASSES.status}" aria-live="polite"></p>
           <ol class="${CLASSES.list}"></ol>
@@ -813,8 +896,15 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
 
     const links = document.createElement("div");
     links.className = CLASSES.links;
+    if (result.recordId) {
+      links.appendChild(createActionLink("Open record", buildCatalogRecordUrl(result.recordId), CLASSES.resultLink));
+    }
     links.appendChild(
-      createActionLink("Open in catalog", buildCatalogSearchUrl(result.title, result.author), CLASSES.resultLink)
+      createActionLink(
+        result.recordId ? "Search catalog" : "Open in catalog",
+        buildCatalogSearchUrl(result.title, result.author),
+        CLASSES.resultLink
+      )
     );
     item.appendChild(links);
 
@@ -844,15 +934,57 @@ const SearchIntelligence = globalThis.UMCPSearchIntelligence;
     list.appendChild(fragment);
 
     setPanelStatus(panel, STATUS.resultsLoaded(payload.results.length), { busy: false });
-const intentLabel = payload.plan?.analysis?.searchIntent
-  ? `Intent: ${payload.plan.analysis.searchIntent.replace(/-/g, " ")}. `
-  : "";
-
-setPanelSummary(
-  panel,
-  `${intentLabel}${payload.candidate?.summary || `Showing top ${payload.results.length} matches for “${context.query}” from ${context.pageLabel}.`}`
-);
+    setPanelSummary(
+      panel,
+      payload.candidate?.summary || `Showing top ${payload.results.length} matches for “${context.query}” from ${context.pageLabel}.`
+    );
     announce(STATUS.resultsLoaded(payload.results.length));
+  }
+
+  // Show the search intent in bold and let the user switch to a different one.
+  function renderIntentBar(panel, analysis, context) {
+    const bar = panel.querySelector(`.${CLASSES.intent}`);
+    if (!bar) return;
+
+    bar.textContent = "";
+    bar.hidden = !analysis;
+    if (!analysis) return;
+
+    const current = document.createElement("p");
+    current.className = CLASSES.intentLabel;
+    const label = document.createElement("strong");
+    label.textContent = "Search intent: ";
+    const value = document.createElement("strong");
+    value.textContent = SearchIntelligence.INTENT_LABELS[analysis.searchIntent] || analysis.searchIntent;
+    current.appendChild(label);
+    current.appendChild(value);
+    current.appendChild(document.createTextNode(analysis.intentOverridden ? " (chosen by you)" : " (auto-detected)"));
+    bar.appendChild(current);
+
+    const group = document.createElement("div");
+    group.setAttribute("role", "group");
+    group.setAttribute("aria-label", "Change search intent");
+
+    const choices = [{ id: "", label: "Auto", hint: "Let the extension decide" }].concat(
+      SearchIntelligence.INTENT_OPTIONS.filter((option) => option.id !== "citation" || context.sourceType === "scholar")
+    );
+    choices.forEach((choice) => {
+      const active = choice.id === (analysis.intentOverridden ? analysis.searchIntent : "");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = CLASSES.intentButton;
+      button.textContent = choice.label;
+      button.title = choice.hint;
+      button.setAttribute("aria-pressed", String(active));
+      button.addEventListener("click", () => {
+        if (active) return;
+        runtimeState.intentOverride = choice.id;
+        runtimeState.forceRefresh = true;
+        processPage().catch((error) => debugLog("Intent change failed", error));
+      });
+      group.appendChild(button);
+    });
+    bar.appendChild(group);
   }
 
   // Main orchestration entry point for the current page state.
@@ -870,6 +1002,7 @@ setPanelSummary(
       if (panel) {
         clearResults(panel);
         setPanelSummary(panel, "");
+        renderIntentBar(panel, null, context);
         setPanelStatus(panel, STATUS.noQuery, { busy: false });
       }
 
@@ -879,7 +1012,16 @@ setPanelSummary(
       return;
     }
 
+    // A new query starts back on auto-detected intent.
+    if (query !== runtimeState.lastRenderedQuery || sourceType !== runtimeState.lastRenderedSource) {
+      runtimeState.intentOverride = "";
+    }
+
+    const forceRefresh = runtimeState.forceRefresh;
+    runtimeState.forceRefresh = false;
+
     if (
+      !forceRefresh &&
       currentUrl === runtimeState.lastUrl &&
       runtimeState.lastRenderedQuery === query &&
       runtimeState.lastRenderedSource === sourceType
@@ -887,6 +1029,9 @@ setPanelSummary(
       return;
     }
 
+    context.intentOverride = runtimeState.intentOverride;
+
+    inlineState.lookups = 0;
     runtimeState.lastUrl = currentUrl;
     runtimeState.lastRenderedQuery = query;
     runtimeState.lastRenderedSource = sourceType;
@@ -899,6 +1044,7 @@ setPanelSummary(
     clearResults(panel);
 
 const searchPlan = buildSearchPlan(query, context);
+renderIntentBar(panel, searchPlan.analysis, context);
 if (!searchPlan.shouldSearch) {
   setPanelSummary(panel, "");
   setPanelStatus(panel, STATUS.skipped, { busy: false });
@@ -931,11 +1077,138 @@ if (!searchPlan.shouldSearch) {
     }
   }
 
+  // ---- Inline per-result matching -------------------------------------------------
+
+  const SCHOLARLY_RESULT_HOSTS = /(?:^|\.)(?:doi\.org|jstor\.org|sciencedirect\.com|springer\.com|link\.springer\.com|wiley\.com|tandfonline\.com|sagepub\.com|nature\.com|ncbi\.nlm\.nih\.gov|arxiv\.org|projectmuse\.org|muse\.jhu\.edu|ieeexplore\.ieee\.org|dl\.acm\.org|oup\.com|cambridge\.org|pnas\.org|science\.org|researchgate\.net)$/i;
+  const inlineState = { lookups: 0, running: 0, queue: [], cache: new Map() };
+
+  function cleanResultTitle(raw) {
+    return normalizeText(raw)
+      .replace(/^\[(?:PDF|HTML|BOOK|B|CITATION|C)\]\s*/i, "")
+      .replace(/\s+[-|\u2013\u2014]\s+[^-|\u2013\u2014]{2,40}$/, "")
+      .trim();
+  }
+
+  // Collect the page's own result entries so each can be matched individually.
+  function collectPageResults(sourceType) {
+    const entries = [];
+
+    if (sourceType === "scholar") {
+      document.querySelectorAll("#gs_res_ccl_mid .gs_r").forEach((node) => {
+        const heading = node.querySelector(".gs_rt");
+        if (!heading) return;
+        const link = heading.querySelector("a[href]");
+        const title = cleanResultTitle(heading.textContent);
+        if (title) {
+          entries.push({ node, anchor: heading, title, href: link ? link.href : "", insertAfter: node.querySelector(".gs_a") || heading });
+        }
+      });
+      return entries;
+    }
+
+    document.querySelectorAll("#search a[href] h3").forEach((heading) => {
+      const anchor = heading.closest("a[href]");
+      if (!anchor) return;
+      let host = "";
+      try {
+        host = new URL(anchor.href).hostname;
+      } catch (error) {
+        return;
+      }
+      if (!SCHOLARLY_RESULT_HOSTS.test(host) && !SearchIntelligence.findDoi(anchor.href)) return;
+      const title = cleanResultTitle(heading.textContent);
+      if (title) {
+        entries.push({ node: anchor, anchor, title, href: anchor.href, insertAfter: anchor });
+      }
+    });
+    return entries;
+  }
+
+  function lookupInlineMatch(title) {
+    const key = SearchIntelligence.normalizeText(title).toLowerCase();
+    if (inlineState.cache.has(key)) return inlineState.cache.get(key);
+
+    const words = SearchIntelligence.normalizeText(title).split(" ").slice(0, 12).join(" ");
+    const promise = (async () => {
+      const cql = `alma.title="${words.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+      const response = await fetch(buildSruUrl(cql), { method: "GET", credentials: "omit" });
+      if (!response.ok) throw new Error(`SRU request failed with status ${response.status}`);
+      const ranked = SearchIntelligence.rankAndDedupeResults(parseSruResponse(await response.text()), title, {
+        availabilityRank: getAvailabilityRank
+      });
+      const top = ranked[0];
+      return top && SearchIntelligence.titleSimilarity(title, top.title) >= CONFIG.inlineBadgeMinScore ? top : null;
+    })();
+
+    inlineState.cache.set(key, promise);
+    return promise;
+  }
+
+  function buildInlineRow(entry, match) {
+    const row = document.createElement("div");
+    row.className = CLASSES.inlineRow;
+
+    if (match) {
+      const badge = createBadge(`UMD: ${match.overallAvailability.text}`, match.overallAvailability.modifierClass === CLASSES.availabilityAvailable ? CLASSES.badgeGood : CLASSES.badgeMuted);
+      row.appendChild(badge);
+      row.appendChild(createActionLink(
+        match.recordId ? "Open record" : "Search catalog",
+        match.recordId ? buildCatalogRecordUrl(match.recordId) : buildCatalogSearchUrl(match.title, match.author),
+        CLASSES.inlineLink
+      ));
+    }
+
+    const doi = SearchIntelligence.findDoi(entry.href);
+    const discoverUrl = new URL(CONFIG.catalog.baseUrl);
+    applyCatalogDefaults(discoverUrl);
+    discoverUrl.searchParams.set("query", `${CONFIG.catalog.queryPrefix}${doi || entry.title}`);
+    row.appendChild(createActionLink("Find via UMD Discover", discoverUrl.toString(), CLASSES.inlineLink));
+    return row;
+  }
+
+  function pumpInlineQueue() {
+    while (inlineState.running < CONFIG.inlineConcurrency && inlineState.queue.length) {
+      const entry = inlineState.queue.shift();
+      inlineState.running += 1;
+      lookupInlineMatch(entry.title)
+        .catch((error) => {
+          debugLog("Inline lookup failed", entry.title, error);
+          return null;
+        })
+        .then((match) => {
+          if (entry.insertAfter.isConnected) {
+            entry.insertAfter.insertAdjacentElement("afterend", buildInlineRow(entry, match));
+          }
+        })
+        .finally(() => {
+          inlineState.running -= 1;
+          pumpInlineQueue();
+        });
+    }
+  }
+
+  // Mark each result once, then look it up with limited concurrency so a page of
+  // results never triggers a burst of catalog requests.
+  function annotatePageResults() {
+    const context = getSearchContext();
+    if (!context.sourceType) return;
+
+    collectPageResults(context.sourceType).forEach((entry) => {
+      if (entry.node.dataset.umcpChecked === "true") return;
+      if (inlineState.lookups >= CONFIG.maxInlineLookups) return;
+      entry.node.dataset.umcpChecked = "true";
+      inlineState.lookups += 1;
+      inlineState.queue.push(entry);
+    });
+    pumpInlineQueue();
+  }
+
   // Debounce repeated mutation bursts so we do not re-process the page too often.
   function scheduleProcess() {
     window.clearTimeout(runtimeState.processTimer);
     runtimeState.processTimer = window.setTimeout(() => {
       processPage().catch((error) => debugLog("processPage failed", error));
+      annotatePageResults();
     }, CONFIG.processDelayMs);
   }
 
@@ -976,6 +1249,7 @@ if (!searchPlan.shouldSearch) {
     ensureLiveRegion();
     installHistoryListeners();
     processPage().catch((error) => debugLog("Initial process failed", error));
+    annotatePageResults();
 
     const observer = new MutationObserver(() => {
       scheduleProcess();

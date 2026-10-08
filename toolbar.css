@@ -126,6 +126,17 @@
   color: #ffffff;
 }
 
+.umcp-library-toolbar-button--newspaper {
+  background: linear-gradient(180deg, #e21833 0%, #c3122c 100%);
+  color: #ffffff;
+  border-color: #b11128;
+}
+
+.umcp-library-toolbar-button--newspaper:hover {
+  background: linear-gradient(180deg, #c3122c 0%, #a40f24 100%);
+  color: #ffffff;
+}
+
 .umcp-library-toolbar-button--cite {
   background: linear-gradient(180deg, #e21833 0%, #c3122c 100%);
   color: #ffffff;
@@ -334,4 +345,62 @@
     right: 12px;
     width: min(100vw - 24px, 420px);
   }
+}
+.umcp-library-settings-panel {
+  top: 460px;
+  border-top: 5px solid var(--umd-gold);
+}
+
+.umcp-library-settings-label {
+  font-weight: 700;
+}
+
+.umcp-library-settings-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid rgba(31, 41, 55, 0.25);
+  border-radius: 8px;
+  font: 13px/1.2 Arial, sans-serif;
+  color: #111827;
+  background: #fff;
+}
+
+.umcp-library-settings-message:empty {
+  display: none;
+}
+
+.umcp-library-toolbar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 6px;
+}
+
+.umcp-library-toolbar-header-spacer {
+  width: 28px;
+  flex: none;
+}
+
+.umcp-library-settings-gear {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid rgba(226, 24, 51, 0.22);
+  background: #e21833;
+  color: #fff;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.umcp-library-settings-gear:hover,
+.umcp-library-settings-gear:focus-visible {
+  background: #b5122a;
 }

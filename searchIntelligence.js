@@ -78,6 +78,14 @@
     /\bpromo code\b/i
   ];
 
+  const INTENT_OPTIONS = [
+    { id: "known-item", label: "Known item", hint: "Find a specific book or work by its title" },
+    { id: "subject", label: "Subject", hint: "Find books about a topic" },
+    { id: "keyword", label: "Keyword", hint: "Match all words anywhere in the record" },
+    { id: "citation", label: "Citation", hint: "Look up an article or citation" }
+  ];
+  const INTENT_LABELS = { "title-author": "Title and author", ...Object.fromEntries(INTENT_OPTIONS.map((o) => [o.id, o.label])) };
+  const TOPIC_CONNECTOR_PATTERN = /\b(?:and|vs\.?|versus|between|&)\b/i;
   const DOI_PATTERN = /\b10\.\d{4,9}\/[-._;()/:A-Z0-9]+\b/i;
   const YEAR_PATTERN = /\b(19|20)\d{2}\b/;
   const TITLE_AUTHOR_PATTERN = /^(.+?)\s+by\s+(.+)$/i;
@@ -188,6 +196,11 @@
       return "subject";
     }
 
+    // "X and Y" with several meaningful words usually asks about a topic, not one title.
+    if (TOPIC_CONNECTOR_PATTERN.test(lowerQuery) && usefulTokens.length >= 3) {
+      return "subject";
+    }
+
     if (usefulTokens.length > 0 && usefulTokens.length <= 4) {
       return "known-item";
     }
@@ -266,7 +279,9 @@
     const usefulTokens = getUsefulTokens(searchableQuery);
     const tokens = tokenize(searchableQuery);
     const titleAuthor = splitTitleAuthor(searchableQuery);
-    const intent = detectSearchIntent(cleanedQuery, searchableQuery, context, usefulTokens);
+    const detectedIntent = detectSearchIntent(cleanedQuery, searchableQuery, context, usefulTokens);
+    const overrideIntent = INTENT_OPTIONS.some((option) => option.id === context.intentOverride) ? context.intentOverride : "";
+    const intent = overrideIntent || detectedIntent;
     const decision = shouldAttemptCatalogSearch({
       cleanedQuery: searchableQuery,
       tokens,
@@ -286,6 +301,8 @@
       quotedPhrase,
       titleAuthor,
       searchIntent: intent,
+      detectedIntent,
+      intentOverridden: Boolean(overrideIntent),
       sourceType,
       maxWords,
       shouldSearch: decision.shouldSearch,
@@ -306,8 +323,50 @@
     return `alma.${field}="${escapeCqlTerm(phrase)}"`;
   }
 
-  function buildFieldTokenAnd(field, tokens) {
-    return dedupeList(tokens).map((token) => `alma.${field}="${escapeCqlTerm(token)}"`).join(" and ");
+  // Alma SRU index names that differ from the field names used in this file. alma.any is rejected
+  // by the endpoint, and alma.subject (singular) silently matches every record, so use these instead.
+  const SRU_INDEX_NAMES = { any: "all_for_ui", subject: "subjects" };
+
+  // Endings stripped when matching words for ranking; plain plurals ("es", "s") are only
+  // stripped there, never when truncating a search term, because "ring*" adds too much noise.
+  const STEM_SUFFIXES = ["ism", "ists", "ist", "ions", "ion", "ing", "ics", "ic", "ed", "es", "s"];
+  const TRUNCATION_SUFFIXES = ["ism", "ists", "ist", "ions", "ion", "ics", "ic"];
+
+  function stemCore(token) {
+    const word = String(token || "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+    if (word.length < 6) return word.length === 5 && word.endsWith("s") ? word.slice(0, -1) : word;
+    for (const suffix of STEM_SUFFIXES) {
+      if (word.endsWith(suffix) && word.length - suffix.length >= 4) {
+        return word.slice(0, -suffix.length);
+      }
+    }
+    return word;
+  }
+
+  // Truncate to the word stem ("catholicism" -> catholic*) so related word forms also match.
+  function truncatedTerm(token) {
+    const word = String(token || "").replace(/[^\p{L}\p{N}]/gu, "");
+    const lower = word.toLowerCase();
+    const suffix = TRUNCATION_SUFFIXES.find((ending) => lower.endsWith(ending) && lower.length - ending.length >= 4);
+    return suffix ? `${lower.slice(0, -suffix.length)}*` : word;
+  }
+
+  function buildFieldTokenAnd(field, tokens, options = {}) {
+    const index = SRU_INDEX_NAMES[field] || field;
+    return dedupeList(tokens)
+      .map((token) => `alma.${index}="${escapeCqlTerm(options.truncate ? truncatedTerm(token) : token)}"`)
+      .join(" and ");
+  }
+
+  // Queries that drop one word at a time (shortest, most generic words first) for broader recall.
+  function buildLeaveOneOut(tokens, limit = 4) {
+    const unique = dedupeList(tokens);
+    if (unique.length < 3) return [];
+    return unique
+      .map((token, index) => ({ token, index }))
+      .sort((x, y) => x.token.length - y.token.length || y.index - x.index)
+      .slice(0, limit)
+      .map(({ token }) => ({ dropped: token, tokens: unique.filter((t) => t !== token) }));
   }
 
   function buildTitleAuthorRoute(title, author, limit = 4) {
@@ -432,50 +491,51 @@
     const candidates = [];
     const keywordLimit = Number(options.keywordCandidateLimit) || 5;
     const usefulTokens = analysis.usefulTokens.slice(0, keywordLimit);
+    if (!usefulTokens.length) return candidates;
 
-    if (analysis.cleanedQuery) {
+    const relaxed = buildLeaveOneOut(usefulTokens);
+
+    candidates.push(
+      buildRoute(
+        "subject keywords",
+        `Matched subject headings containing: ${usefulTokens.join(", ")}`,
+        buildFieldTokenAnd("subject", usefulTokens, { truncate: true }),
+        "subject-keywords"
+      )
+    );
+
+    // Every word anywhere in the record comes before any relaxed route, so close matches
+    // are not displaced by records that only share some of the words.
+    candidates.push(
+      buildRoute(
+        "any-field keywords",
+        `Matched all of these words anywhere: ${usefulTokens.join(", ")}`,
+        buildFieldTokenAnd("any", usefulTokens, { truncate: true }),
+        "keyword"
+      )
+    );
+
+    relaxed.forEach(({ dropped, tokens }) => {
       candidates.push(
         buildRoute(
-          "subject phrase",
-          `Tried a subject-oriented search for “${analysis.cleanedQuery}”`,
-          buildFieldPhrase("subject", analysis.cleanedQuery),
-          "subject"
+          "subject keywords (relaxed)",
+          `Relaxed subject match without “${dropped}”`,
+          buildFieldTokenAnd("subject", tokens, { truncate: true }),
+          "subject-relaxed"
         )
       );
-    }
+    });
 
-    if (usefulTokens.length >= 2) {
+    relaxed.forEach(({ dropped, tokens }) => {
       candidates.push(
         buildRoute(
-          "subject keywords",
-          `Matched subject keywords: ${usefulTokens.join(", ")}`,
-          buildFieldTokenAnd("subject", usefulTokens),
-          "subject-keywords"
+          "any-field keywords (relaxed)",
+          `Relaxed keyword match without “${dropped}”`,
+          buildFieldTokenAnd("any", tokens, { truncate: true }),
+          "keyword-relaxed"
         )
       );
-    }
-
-    if (usefulTokens.length >= 1) {
-      candidates.push(
-        buildRoute(
-          "any-field keywords",
-          `Expanded to keyword matching for: ${usefulTokens.join(", ")}`,
-          buildFieldTokenAnd("any", usefulTokens),
-          "keyword"
-        )
-      );
-    }
-
-    if (analysis.cleanedQuery && analysis.cleanedQuery.split(" ").length <= 6) {
-      candidates.push(
-        buildRoute(
-          "title fallback",
-          `Also tried the cleaned phrase as a title search: “${analysis.cleanedQuery}”`,
-          buildFieldPhrase("title", analysis.cleanedQuery),
-          "title-fallback"
-        )
-      );
-    }
+    });
 
     return candidates;
   }
@@ -536,37 +596,27 @@
     const candidates = [];
     const keywordLimit = Number(options.keywordCandidateLimit) || 5;
     const usefulTokens = analysis.usefulTokens.slice(0, keywordLimit);
+    if (!usefulTokens.length) return candidates;
 
-    if (analysis.cleanedQuery) {
+    candidates.push(
+      buildRoute(
+        "any-field keywords",
+        `Matched all of these words (and related word forms) anywhere: ${usefulTokens.join(", ")}`,
+        buildFieldTokenAnd("any", usefulTokens, { truncate: true }),
+        "keyword"
+      )
+    );
+
+    buildLeaveOneOut(usefulTokens).forEach(({ dropped, tokens }) => {
       candidates.push(
         buildRoute(
-          "title phrase",
-          `Tried the cleaned query as a title phrase: “${analysis.cleanedQuery}”`,
-          buildFieldPhrase("title", analysis.cleanedQuery),
-          "title"
+          "any-field keywords (relaxed)",
+          `Relaxed keyword match without “${dropped}”`,
+          buildFieldTokenAnd("any", tokens, { truncate: true }),
+          "keyword-relaxed"
         )
       );
-    }
-
-    if (usefulTokens.length >= 2) {
-      candidates.push(
-        buildRoute(
-          "any-field keywords",
-          `Matched keywords anywhere: ${usefulTokens.join(", ")}`,
-          buildFieldTokenAnd("any", usefulTokens),
-          "keyword"
-        )
-      );
-
-      candidates.push(
-        buildRoute(
-          "title keywords",
-          `Matched title keywords: ${usefulTokens.join(", ")}`,
-          buildFieldTokenAnd("title", usefulTokens),
-          "title-keywords"
-        )
-      );
-    }
+    });
 
     return candidates;
   }
@@ -586,6 +636,76 @@
     }
 
     return deduped;
+  }
+
+  const TITLE_FILLER = new Set(["the", "a", "an", "of", "and", "in", "on", "for", "to", "by", "with"]);
+
+  function titleTokens(text) {
+    return normalizeText(text)
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((token) => token && !TITLE_FILLER.has(token));
+  }
+
+  // 0..1 similarity between two titles; a short title fully contained in a longer
+  // one (a subtitle) scores 0.9, but only when it has at least three words.
+  function titleSimilarity(a, b) {
+    const setA = new Set(titleTokens(a));
+    const setB = new Set(titleTokens(b));
+    if (!setA.size || !setB.size) return 0;
+
+    let shared = 0;
+    setA.forEach((token) => {
+      if (setB.has(token)) shared += 1;
+    });
+
+    const jaccard = shared / (setA.size + setB.size - shared);
+    const smaller = Math.min(setA.size, setB.size);
+    const containment = smaller >= 3 ? (shared / smaller) * 0.9 : 0;
+    return Math.max(jaccard, containment);
+  }
+
+  function queryCoverage(query, text) {
+    const queryTokens = titleTokens(query);
+    if (!queryTokens.length) return 0;
+    const textTokens = new Set(titleTokens(text).map(stemCore));
+    return queryTokens.filter((token) => textTokens.has(stemCore(token))).length / queryTokens.length;
+  }
+
+  function scoreResultAgainstQuery(result, query) {
+    const text = `${result.title || ""} ${result.author || ""}`;
+    return Math.max(titleSimilarity(query, result.title), queryCoverage(query, text) * 0.95);
+  }
+
+  function resultDedupeKey(result) {
+    const surname = normalizeText(result.author).toLowerCase().split(/[,\s]/)[0] || "";
+    return `${titleTokens(result.title).slice(0, 8).join(" ")}|${surname}`;
+  }
+
+  // Collapse duplicate editions (keeping the most available copy), score each record
+  // against the query, and sort best match first. Ties keep the catalog's own order.
+  function rankAndDedupeResults(results, query, options = {}) {
+    const availabilityRank = typeof options.availabilityRank === "function" ? options.availabilityRank : () => 0;
+    const best = new Map();
+
+    (results || []).forEach((result, index) => {
+      const key = resultDedupeKey(result);
+      const scored = { ...result, matchScore: scoreResultAgainstQuery(result, query), sourceIndex: index };
+      const existing = best.get(key);
+      const tierDiff = existing ? (scored.routeTier || 0) - (existing.routeTier || 0) : 0;
+      if (!existing || tierDiff < 0 || (tierDiff === 0 && availabilityRank(scored) > availabilityRank(existing))) {
+        best.set(key, existing ? { ...scored, sourceIndex: Math.min(existing.sourceIndex, index) } : scored);
+      }
+    });
+
+    const tiered = Boolean(options.tiered);
+    return Array.from(best.values()).sort((a, b) =>
+      (tiered ? (a.routeTier || 0) - (b.routeTier || 0) : 0) ||
+      (b.matchScore - a.matchScore) ||
+      (a.sourceIndex - b.sourceIndex));
   }
 
   function buildSearchPlan(rawQuery, context = {}, options = {}) {
@@ -622,6 +742,14 @@
       return analyzeQuery(rawQuery, context, options).cleanedQuery;
     },
     analyzeQuery,
-    buildSearchPlan
+    buildSearchPlan,
+    INTENT_OPTIONS,
+    INTENT_LABELS,
+    titleSimilarity,
+    rankAndDedupeResults,
+    findDoi(text) {
+      const match = String(text || "").match(DOI_PATTERN);
+      return match ? match[0].replace(/[.,;)]+$/, "") : "";
+    }
   };
 })();

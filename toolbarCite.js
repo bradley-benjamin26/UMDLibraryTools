@@ -259,7 +259,7 @@
     const monthMatch = pageText.match(monthPattern);
     if (monthMatch) result.month = monthMatch[1];
 
-    const yearMatch = pageText.match(/\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})\b|\b(\d{4})\b/i);
+    const yearMatch = pageText.match(/\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})\b|\b((?:18|19|20)\d{2})\b/i);
     if (yearMatch) {
       const year = yearMatch[1] || yearMatch[2];
       if (year) result.year = year;
@@ -281,23 +281,26 @@
   toolbar.getPublicationMetadata = function() {
     const jsonLdObjects = toolbar.flattenJsonLd(toolbar.getJsonLdObjects());
     const pageMeta = toolbar.extractJournalAndIssueData();
+    const firstPage = toolbar.getMetaContent('meta[name="citation_firstpage"]');
+    const lastPage = toolbar.getMetaContent('meta[name="citation_lastpage"]');
+    const citationPages = firstPage ? (lastPage && lastPage !== firstPage ? `${firstPage}-${lastPage}` : firstPage) : "";
     const metadata = {
-      title: toolbar.normalizeArticleTitle(document.title || toolbar.getMetaContent('meta[property="og:title"]') || toolbar.getMetaContent('meta[name="citation_title"]') || ""),
+      title: toolbar.normalizeArticleTitle(toolbar.getMetaContent('meta[name="citation_title"]') || toolbar.getMetaContent('meta[name="dc.title"]') || toolbar.getMetaContent('meta[property="og:title"]') || document.title || ""),
       authors: toolbar.getAuthorsFromMetadata(),
-      journal: toolbar.cleanText(pageMeta.journal || toolbar.getMetaContent('meta[name="citation_journal_title"]') || toolbar.getMetaContent('meta[name="dc.source"]') || ""),
+      journal: toolbar.cleanText(toolbar.getMetaContent('meta[name="citation_journal_title"]') || toolbar.getMetaContent('meta[name="dc.source"]') || pageMeta.journal || ""),
       publisher: toolbar.cleanText(toolbar.getMetaContent('meta[name="citation_publisher"]') || toolbar.getMetaContent('meta[name="dc.publisher"]') || toolbar.getMetaContent('meta[name="book_publisher"]') || ""),
       place: toolbar.cleanText(toolbar.getMetaContent('meta[name="citation_place"]') || toolbar.getMetaContent('meta[name="dc.coverage"]') || ""),
-      volume: toolbar.cleanText(pageMeta.volume || toolbar.getMetaContent('meta[name="citation_volume"]') || toolbar.getMetaContent('meta[name="volume"]') || ""),
-      issue: toolbar.cleanText(pageMeta.issue || toolbar.getMetaContent('meta[name="citation_issue"]') || toolbar.getMetaContent('meta[name="issue"]') || ""),
-      pages: toolbar.cleanText(pageMeta.pages || toolbar.getMetaContent('meta[name="citation_pages"]') || toolbar.getMetaContent('meta[name="page"]') || ""),
+      volume: toolbar.cleanText(toolbar.getMetaContent('meta[name="citation_volume"]') || toolbar.getMetaContent('meta[name="volume"]') || pageMeta.volume || ""),
+      issue: toolbar.cleanText(toolbar.getMetaContent('meta[name="citation_issue"]') || toolbar.getMetaContent('meta[name="issue"]') || pageMeta.issue || ""),
+      pages: toolbar.cleanText(citationPages || toolbar.getMetaContent('meta[name="citation_pages"]') || toolbar.getMetaContent('meta[name="page"]') || pageMeta.pages || ""),
       startPage: toolbar.cleanText(pageMeta.startPage || ""),
       endPage: toolbar.cleanText(pageMeta.endPage || ""),
       month: toolbar.cleanText(pageMeta.month || ""),
-      year: toolbar.cleanText(pageMeta.year || toolbar.getMetaContent('meta[name="citation_publication_date"]') || toolbar.getMetaContent('meta[name="dc.date"]') || toolbar.getMetaContent('meta[property="article:published_time"]') || ""),
+      year: toolbar.cleanText(toolbar.getMetaContent('meta[name="citation_publication_date"]') || toolbar.getMetaContent('meta[name="citation_date"]') || toolbar.getMetaContent('meta[name="citation_online_date"]') || toolbar.getMetaContent('meta[name="dc.date"]') || toolbar.getMetaContent('meta[property="article:published_time"]') || pageMeta.year || ""),
       doi: toolbar.cleanText(toolbar.getMetaContent('meta[name="citation_doi"]') || toolbar.getMetaContent('meta[name="doi"]') || ""),
       isbn: toolbar.cleanText(toolbar.getMetaContent('meta[name="citation_isbn"]') || toolbar.getMetaContent('meta[name="isbn"]') || ""),
       issn: toolbar.cleanText(toolbar.getMetaContent('meta[name="citation_issn"]') || toolbar.getMetaContent('meta[name="issn"]') || ""),
-      abstract: toolbar.cleanText(pageMeta.abstract || toolbar.getMetaContent('meta[name="citation_abstract"]') || toolbar.getMetaContent('meta[name="description"]') || toolbar.getMetaContent('meta[property="og:description"]') || ""),
+      abstract: toolbar.cleanText(toolbar.getMetaContent('meta[name="citation_abstract"]') || pageMeta.abstract || toolbar.getMetaContent('meta[name="description"]') || toolbar.getMetaContent('meta[property="og:description"]') || ""),
       url: toolbar.cleanText(window.location.href)
     };
 
@@ -352,40 +355,52 @@
   };
 
   toolbar.formatAuthorList = function(authors, style) {
-    const cleanAuthors = (authors || [])
-      .map((author) => toolbar.authorToDisplayName(author))
-      .filter(Boolean);
-    if (!cleanAuthors.length) return "Unknown author";
+    const people = (authors || [])
+      .map((author) => toolbar.parseAuthorEntry(author))
+      .filter(Boolean)
+      .map((person) => ({
+        first: toolbar.cleanText(person.firstName),
+        last: toolbar.cleanText(person.lastName) || toolbar.cleanText(person.displayName)
+      }))
+      .filter((person) => person.last);
+    if (!people.length) return "Unknown author";
+
+    const inverted = (person) => (person.first ? `${person.last}, ${person.first}` : person.last);
+    const natural = (person) => (person.first ? `${person.first} ${person.last}` : person.last);
 
     if (style === "apa") {
-      const formatted = cleanAuthors.slice(0, 7).map((author) => {
-        const normalized = toolbar.cleanText(author).replace(/\s+/g, " ");
-        if (!normalized) return "";
-        if (normalized.includes(",")) {
-          const [family, given] = normalized.split(/,\s*/);
-          const initials = (given || "")
-            .split(/\s+/)
-            .filter(Boolean)
-            .map((part) => part.charAt(0).toUpperCase() + ".")
-            .join(" ");
-          return `${family}, ${initials}`.trim();
-        }
-
-        const tokens = normalized.split(/\s+/);
-        if (tokens.length === 1) return `${tokens[0]}, `;
-        const family = tokens.pop();
-        const initialText = tokens.map((token) => token.charAt(0).toUpperCase() + ".").join(" ");
-        return `${family}, ${initialText}`;
-      }).filter(Boolean);
-
+      const initials = (person) => person.first
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((part) => (part.endsWith(".") ? part : `${part.charAt(0).toUpperCase()}.`))
+        .join(" ");
+      const formatted = people.slice(0, 20).map((person) => (person.first ? `${person.last}, ${initials(person)}` : person.last));
+      if (people.length > 20) {
+        return `${formatted.slice(0, 19).join(", ")}, ... ${formatted[19]}`;
+      }
       if (formatted.length === 1) return formatted[0];
-      if (formatted.length === 2) return `${formatted[0]} & ${formatted[1]}`;
+      if (formatted.length === 2) return `${formatted[0]}, & ${formatted[1]}`;
       return `${formatted.slice(0, -1).join(", ")}, & ${formatted[formatted.length - 1]}`;
     }
 
-    if (cleanAuthors.length === 1) return cleanAuthors[0];
-    if (cleanAuthors.length === 2) return `${cleanAuthors[0]} & ${cleanAuthors[1]}`;
-    return `${cleanAuthors.slice(0, -1).join(", ")}, & ${cleanAuthors[cleanAuthors.length - 1]}`;
+    if (style === "chicago") {
+      const listed = people.length > 10 ? people.slice(0, 7) : people;
+      const names = listed.map((person, index) => (index === 0 ? inverted(person) : natural(person)));
+      if (people.length > 10) return `${names.join(", ")}, et al.`;
+      if (names.length === 1) return names[0];
+      if (names.length === 2) return `${names[0]}, and ${names[1]}`;
+      return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+    }
+
+    // MLA 9: one author inverted, two authors joined by "and", three or more collapse to "et al."
+    if (people.length === 1) return inverted(people[0]);
+    if (people.length === 2) return `${inverted(people[0])}, and ${natural(people[1])}`;
+    return `${inverted(people[0])}, et al.`;
+  };
+
+  toolbar.endWithPeriod = function(text) {
+    const trimmed = toolbar.cleanText(text);
+    return /[.?!]$/.test(trimmed) ? trimmed : `${trimmed}.`;
   };
 
   toolbar.detectCitationType = function(metadata) {
@@ -410,7 +425,7 @@
   toolbar.buildCitationText = function(styleKey = "mla") {
     const metadata = toolbar.getPublicationMetadata();
     const itemType = toolbar.detectCitationType(metadata);
-    const authorText = toolbar.formatAuthorList(metadata.authors, styleKey);
+    const authorText = toolbar.endWithPeriod(toolbar.formatAuthorList(metadata.authors, styleKey));
     const title = toolbar.cleanText(metadata.title) || "Untitled";
     const journal = toolbar.cleanText(metadata.journal || "Journal Title");
     const volume = toolbar.cleanText(metadata.volume);
@@ -428,30 +443,30 @@
       const bookTitle = title.includes(".") ? title : `${title}.`;
 
       if (styleKey === "apa") {
-        return `${authorText}. (${bookYear}). ${bookTitle} ${publisher}.`;
+        return `${authorText} (${bookYear}). ${bookTitle} ${publisher}.`;
       }
 
       if (styleKey === "chicago") {
-        return `${authorText}. ${bookTitle} ${place ? `${place}: ` : ""}${publisher}, ${bookYear}.`;
+        return `${authorText} ${bookTitle} ${place ? `${place}: ` : ""}${publisher}, ${bookYear}.`;
       }
 
-      return `${authorText}. ${bookTitle} ${publisher}, ${bookYear}.`;
+      return `${authorText} ${bookTitle} ${publisher}, ${bookYear}.`;
     }
 
     if (styleKey === "apa") {
-      const entry = `${authorText}. (${matchedYear || year || "n.d."}). ${title}. ${journal}${volume ? `, ${volume}` : ""}${issue ? `(${issue})` : ""}${pages ? `, ${pages}` : ""}. ${doi ? `https://doi.org/${doi}` : url}`;
+      const entry = `${authorText} (${matchedYear || year || "n.d."}). ${title}. ${journal}${volume ? `, ${volume}` : ""}${issue ? `(${issue})` : ""}${pages ? `, ${pages}` : ""}. ${doi ? `https://doi.org/${doi}` : url}`;
       return entry;
     }
 
     if (styleKey === "chicago") {
       const titleText = title.includes(".") ? title : `${title}.`;
       const source = [journal, volume ? ` ${volume}` : "", issue ? `, no. ${issue}` : "", year ? ` (${matchedYear || year})` : "", pages ? `: ${pages}` : ""].join("").trim();
-      return `${authorText}. "${titleText}" ${source}.${doi ? ` https://doi.org/${doi}.` : ` ${url}.`}`;
+      return `${authorText} "${titleText}" ${source}.${doi ? ` https://doi.org/${doi}.` : ` ${url}.`}`;
     }
 
     const mlaTitle = title.includes(".") ? title : `${title}.`;
     const mlaJournal = [journal, volume ? ` ${volume}` : "", issue ? `, no. ${issue}` : "", year ? ` (${matchedYear || year})` : "", pages ? `: ${pages}` : ""].join("").trim();
-    return `${authorText}. "${mlaTitle}" ${mlaJournal}${doi ? ` ${doi}` : ` ${url}`}.`;
+    return `${authorText} "${mlaTitle}" ${mlaJournal}${doi ? ` https://doi.org/${doi}` : ` ${url}`}.`;
   };
 
   toolbar.logCitationMetadata = function(metadata, context = "citation") {
