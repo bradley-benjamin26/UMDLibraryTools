@@ -86,6 +86,17 @@ Primary responsibilities:
 
 To add a paper, append an entry using the MMS ID column from the Alma electronic titles export.
 
+### referenceLinks.js
+
+Standalone content script for https://*.wikipedia.org/wiki/* (with referenceLinks.css).
+
+Primary responsibilities:
+
+- reads the COinS metadata span (span.Z3988) that Wikipedia emits beside each citation
+- skips citations that are not books or journal articles
+- adds a "Find in UMD Library" link to UMD Discover, searching ISBN, then DOI, then title
+- makes no network requests
+
 ### toolbarCite.js
 
 Primary responsibilities:

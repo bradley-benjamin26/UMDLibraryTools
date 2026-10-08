@@ -1,0 +1,37 @@
+.umcp-reference-link:link,
+.umcp-reference-link:visited {
+  margin-left: 0.4em;
+  font-size: 0.85em;
+  font-weight: 600;
+  color: #a40f24;
+  white-space: nowrap;
+  text-decoration: underline;
+}
+
+.umcp-reference-link:hover {
+  color: #7d0b1b;
+}
+
+.umcp-reference-link:focus-visible {
+  outline: 2px solid #a40f24;
+  outline-offset: 2px;
+}
+
+/* Wikipedia dark mode: lift the red so it stays readable. */
+html.skin-theme-clientpref-night .umcp-reference-link:link,
+html.skin-theme-clientpref-night .umcp-reference-link:visited {
+  color: #ff8a98;
+}
+
+@media (prefers-color-scheme: dark) {
+  html.skin-theme-clientpref-os .umcp-reference-link:link,
+  html.skin-theme-clientpref-os .umcp-reference-link:visited {
+    color: #ff8a98;
+  }
+}
+
+@media print {
+  .umcp-reference-link {
+    display: none;
+  }
+}
