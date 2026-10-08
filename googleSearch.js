@@ -1144,6 +1144,32 @@ if (!searchPlan.shouldSearch) {
     return promise;
   }
 
+  // Google lays out a result's title block inside containers that are flipped
+  // (rotated, reversed, or vertical) and counter-flips their own children. A row
+  // injected inside such a container renders upside down and out of order.
+  function isFlippedContainer(element) {
+    const style = window.getComputedStyle(element);
+    const isReversedFlex = /flex/.test(style.display) && /reverse$/.test(style.flexDirection);
+    return (style.transform && style.transform !== "none") ||
+      (style.rotate && style.rotate !== "none") ||
+      (style.scale && style.scale !== "none") ||
+      isReversedFlex ||
+      (style.writingMode && style.writingMode !== "horizontal-tb");
+  }
+
+  // Return the node to insert after. When the matched node sits inside a flipped
+  // container, that is the outermost flipped ancestor, so the row lands in normal
+  // flow beside the whole result instead of inside the flipped block.
+  function findSafeInsertionPoint(node) {
+    let outermostFlipped = null;
+    for (let ancestor = node.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+      if (isFlippedContainer(ancestor)) {
+        outermostFlipped = ancestor;
+      }
+    }
+    return outermostFlipped || node;
+  }
+
   function buildInlineRow(entry, match) {
     const row = document.createElement("div");
     row.className = CLASSES.inlineRow;
@@ -1177,7 +1203,7 @@ if (!searchPlan.shouldSearch) {
         })
         .then((match) => {
           if (entry.insertAfter.isConnected) {
-            entry.insertAfter.insertAdjacentElement("afterend", buildInlineRow(entry, match));
+            findSafeInsertionPoint(entry.insertAfter).insertAdjacentElement("afterend", buildInlineRow(entry, match));
           }
         })
         .finally(() => {
