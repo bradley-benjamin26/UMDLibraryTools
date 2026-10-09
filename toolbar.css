@@ -347,7 +347,8 @@
   }
 }
 .umcp-library-settings-panel {
-  top: 460px;
+  top: auto;
+  bottom: 12px;
   border-top: 5px solid var(--umd-gold);
 }
 
@@ -386,6 +387,7 @@
 .umcp-library-settings-gear {
   width: 28px;
   height: 28px;
+  min-height: 0;
   flex: none;
   padding: 0;
   display: flex;
